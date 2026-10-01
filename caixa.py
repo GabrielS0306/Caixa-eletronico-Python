@@ -2,6 +2,9 @@ import deposito
 import saque
 import saldo
 import time
+import historico
+
+transacoes = []
 
 def obter_valor(mensagem):
     try:
@@ -20,6 +23,7 @@ while True:
     print("1 - Depósito")
     print("2 - Saque")
     print("3 - Consultar saldo")
+    print("4 - Histórico de transações")
     print("0 - Sair")
 
     opcao = input("Escolha uma opção: ")
@@ -28,16 +32,31 @@ while True:
         valor = obter_valor("Valor do depósito: R$ ")
 
         if valor is not None:
+            saldo_anterior = saldo_atual
             saldo_atual = deposito.deposito(valor, saldo_atual)
+
+            if valor > 0:
+                historico.registrar_transacao(
+                    transacoes, "Depósito", valor, saldo_atual
+                )
 
     elif opcao == "2":
         valor = obter_valor("Valor do saque: R$ ")
 
         if valor is not None:
+            saldo_anterior = saldo_atual
             saldo_atual = saque.saque(valor, saldo_atual)
+
+            if 0 < valor <= saldo_anterior:
+                historico.registrar_transacao(
+                    transacoes, "Saque", valor, saldo_atual
+                )
 
     elif opcao == "3":
         saldo.saldo_total(saldo_atual)
+
+    elif opcao == "4":
+        historico.mostrar_historico(transacoes)
 
     elif opcao == "0":
         print("Saindo do caixa eletrônico...")
