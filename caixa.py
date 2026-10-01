@@ -3,10 +3,10 @@ import saque
 import saldo
 import time
 import historico
-import math
+import math 
+import persistencia
 
-transacoes = []
-saldo_atual = 0.0
+saldo_atual, transacoes = persistencia.carregar_dados()
 
 def obter_valor(mensagem):
     try:
@@ -43,9 +43,12 @@ while True:
         if valor is not None:
             saldo_atual = deposito.depositar(valor, saldo_atual)
 
-            historico.registrar_transacao(
-                transacoes, "Depósito", valor, saldo_atual
-            )
+            if valor > 0:
+                historico.registrar_transacao(
+                    transacoes, "Depósito", valor, saldo_atual
+                )
+
+                persistencia.salvar_dados(saldo_atual, transacoes)
 
     elif opcao == "2":
         valor = obter_valor("Valor do saque: R$ ")
@@ -54,10 +57,12 @@ while True:
             saldo_anterior = saldo_atual
             saldo_atual = saque.sacar(valor, saldo_atual)
 
-            if valor <= saldo_anterior:
+            if 0 < valor <= saldo_anterior:
                 historico.registrar_transacao(
                     transacoes, "Saque", valor, saldo_atual
                 )
+
+                persistencia.salvar_dados(saldo_atual, transacoes)
 
     elif opcao == "3":
         saldo.saldo_total(saldo_atual)
