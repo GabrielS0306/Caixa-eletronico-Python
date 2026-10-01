@@ -3,20 +3,29 @@ import saque
 import saldo
 import time
 import historico
+import math
 
 transacoes = []
+saldo_atual = 0.0
 
 def obter_valor(mensagem):
     try:
-        valor = float(input(mensagem))
+        entrada = input(mensagem).strip()
+        valor = float(entrada.replace(",", "."))
+
+        if not math.isfinite(valor):
+            print("Digite um número válido e finito.")
+            return None
+
+        if valor <= 0:
+            print("O valor deve ser maior que zero.")
+            return None
+
         return valor
 
     except ValueError:
         print("Entrada inválida! Digite um número.")
         return None
-
-
-saldo_atual = 0.0
 
 while True:
     print("\n===== CAIXA ELETRÔNICO =====")
@@ -32,22 +41,20 @@ while True:
         valor = obter_valor("Valor do depósito: R$ ")
 
         if valor is not None:
-            saldo_anterior = saldo_atual
-            saldo_atual = deposito.deposito(valor, saldo_atual)
+            saldo_atual = deposito.depositar(valor, saldo_atual)
 
-            if valor > 0:
-                historico.registrar_transacao(
-                    transacoes, "Depósito", valor, saldo_atual
-                )
+            historico.registrar_transacao(
+                transacoes, "Depósito", valor, saldo_atual
+            )
 
     elif opcao == "2":
         valor = obter_valor("Valor do saque: R$ ")
 
         if valor is not None:
             saldo_anterior = saldo_atual
-            saldo_atual = saque.saque(valor, saldo_atual)
+            saldo_atual = saque.sacar(valor, saldo_atual)
 
-            if 0 < valor <= saldo_anterior:
+            if valor <= saldo_anterior:
                 historico.registrar_transacao(
                     transacoes, "Saque", valor, saldo_atual
                 )

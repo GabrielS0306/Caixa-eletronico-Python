@@ -1,7 +1,6 @@
-def deposito(valor, saldo):
+def depositar(valor, saldo):
     if valor <= 0:
         print("Valor inválido! Digite um valor maior que zero.")
-
         return saldo
 
     saldo += valor
