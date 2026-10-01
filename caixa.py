@@ -1,8 +1,10 @@
 import deposito
 import saque
 import saldo
-import time
 import historico
+import relatorio
+
+import time
 import math 
 import persistencia
 
@@ -33,6 +35,7 @@ while True:
     print("2 - Saque")
     print("3 - Consultar saldo")
     print("4 - Histórico de transações")
+    print("5 - Relatório da conta")
     print("0 - Sair")
 
     opcao = input("Escolha uma opção: ")
@@ -69,6 +72,9 @@ while True:
 
     elif opcao == "4":
         historico.mostrar_historico(transacoes)
+
+    elif opcao == "5":
+        relatorio.mostrar_relatorio(transacoes, saldo_atual)
 
     elif opcao == "0":
         print("Saindo do caixa eletrônico...")

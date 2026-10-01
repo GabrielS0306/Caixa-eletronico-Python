@@ -1,10 +1,25 @@
 {
-    "saldo": 1000.0,
+    "saldo": 1170.0,
     "transacoes": [
         {
             "tipo": "Depósito",
             "valor": 1000.0,
             "saldo": 1000.0
+        },
+        {
+            "tipo": "Depósito",
+            "valor": 200.0,
+            "saldo": 1200.0
+        },
+        {
+            "tipo": "Depósito",
+            "valor": 50.0,
+            "saldo": 1250.0
+        },
+        {
+            "tipo": "Saque",
+            "valor": 80.0,
+            "saldo": 1170.0
         }
     ]
 }
