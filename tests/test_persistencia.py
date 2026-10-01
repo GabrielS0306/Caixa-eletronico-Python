@@ -69,5 +69,49 @@ class TestPersistencia(unittest.TestCase):
         self.assertEqual(saldo, 300.0)
         self.assertEqual(transacoes, [])
 
+    def test_saldo_negativo(self):
+        dados = {
+            "saldo": -100,
+            "transacoes": []
+        }
+
+        self.assertFalse(persistencia.validar_dados(dados))
+
+    def test_saldo_infinito(self):
+        dados = {
+            "saldo": float("inf"),
+            "transacoes": []
+        }
+
+        self.assertFalse(persistencia.validar_dados(dados))
+
+    def test_transacao_invalida(self):
+        dados = {
+            "saldo": 100,
+            "transacoes": [
+                {
+                    "tipo": "Transferência",
+                    "valor": 50,
+                    "saldo": 100
+                }
+            ]
+        }
+
+        self.assertFalse(persistencia.validar_dados(dados))
+
+    def test_valor_negativo_na_transacao(self):
+        dados = {
+            "saldo": 100,
+            "transacoes": [
+                {
+                    "tipo": "Depósito",
+                    "valor": -50,
+                    "saldo": 100
+                }
+            ]
+        }
+
+        self.assertFalse(persistencia.validar_dados(dados))
+
 if __name__ == "__main__":
     unittest.main()
