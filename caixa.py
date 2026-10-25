@@ -1,9 +1,11 @@
 import time
 
+import cedulas
 import historico
 import relatorio
 import persistencia
 
+from cedulas import CedulasIndisponiveisError
 from conta_bancaria import (
     SaldoInsuficienteError,
     ValorInvalidoError,
@@ -21,6 +23,25 @@ def obter_valor(mensagem):
     except ValorInvalidoError as erro:
         print(erro)
         return None
+
+
+def realizar_saque(conta, valor):
+    try:
+        # Calcula as cédulas antes de sacar para não debitar um valor que o caixa não consegue entregar
+        notas = cedulas.calcular_cedulas(valor)
+        conta.sacar(valor)
+
+    except (CedulasIndisponiveisError, SaldoInsuficienteError) as erro:
+        print(erro)
+        return False
+
+    print("Saque realizado com sucesso!")
+    print("Retire suas cédulas:")
+
+    for cedula, quantidade in notas.items():
+        print(f"  {quantidade} x {formatar_moeda(cedula)}")
+
+    return True
 
 
 def main():
@@ -46,18 +67,13 @@ def main():
                 persistencia.salvar_conta(conta)
 
         elif opcao == "2":
-            valor = obter_valor("Valor do saque: R$ ")
+            valor = obter_valor(
+                "Valor do saque (múltiplos de "
+                f"{formatar_moeda(min(cedulas.CEDULAS))}): R$ "
+            )
 
-            if valor is not None:
-                try:
-                    conta.sacar(valor)
-
-                except SaldoInsuficienteError as erro:
-                    print(erro)
-
-                else:
-                    print("Saque realizado com sucesso!")
-                    persistencia.salvar_conta(conta)
+            if valor is not None and realizar_saque(conta, valor):
+                persistencia.salvar_conta(conta)
 
         elif opcao == "3":
             print(f"Saldo disponível: {formatar_moeda(conta.saldo)}")

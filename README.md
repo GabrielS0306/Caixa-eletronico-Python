@@ -6,6 +6,7 @@ Projeto de estudo desenvolvido em Python para praticar os fundamentos da linguag
 
 * Depósitos e saques com validação de valores
 * Bloqueio de saques com saldo insuficiente
+* Saque em cédulas de R$ 200, 100, 50, 20 e 10, com o menor número de notas possível
 * Consulta de saldo
 * Histórico de transações com data e hora
 * Relatório da conta (totais e quantidades de depósitos e saques)
@@ -23,6 +24,7 @@ Projeto de estudo desenvolvido em Python para praticar os fundamentos da linguag
 caixa_eletronico/
 ├── caixa.py            # Menu interativo e leitura de valores
 ├── conta_bancaria.py   # Classe ContaBancaria e regras de negócio
+├── cedulas.py          # Cálculo das cédulas entregues no saque
 ├── historico.py        # Exibição do histórico de transações
 ├── relatorio.py        # Cálculo e exibição do relatório da conta
 ├── persistencia.py     # Leitura e gravação do dados.json
