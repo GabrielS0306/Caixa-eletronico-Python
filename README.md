@@ -83,6 +83,8 @@ Este projeto tem finalidade educacional. O arquivo `dados.json` é criado automa
 
 O PIN é salvo apenas como hash (PBKDF2 com salt aleatório), nunca em texto puro. Na primeira execução, o programa pede para cadastrar um PIN.
 
+Por padrão, o PIN não aparece enquanto é digitado. No terminal integrado do VS Code no Windows, onde a leitura escondida não funciona, o PIN fica visível e o programa avisa isso. Para escondê-lo, execute em um PowerShell ou Windows Terminal fora do VS Code.
+
 Para desbloquear a conta durante os estudos, altere `"tentativas_falhas"` para `0` no `dados.json`. Para cadastrar um novo PIN, troque a seção `"seguranca"` por `null`.
 
 ## Autor

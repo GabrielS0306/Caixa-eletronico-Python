@@ -82,7 +82,7 @@ class TestPin(unittest.TestCase):
         saida = StringIO()
 
         with patch(
-            "caixa_eletronico.interface.menu.getpass", side_effect=pins
+            "caixa_eletronico.interface.menu.ler_pin", side_effect=pins
         ):
             with redirect_stdout(saida):
                 resultado = funcao(self.conta)
@@ -132,6 +132,23 @@ class TestPin(unittest.TestCase):
         self.assertIn("O PIN deve ter de 4 a 6 dígitos", resultado)
         self.assertIn("Os PINs não conferem", resultado)
         self.assertTrue(self.conta.autenticar("5678"))
+
+class TestLerPin(unittest.TestCase):
+    def ler(self, plataforma, ambiente):
+        with patch("caixa_eletronico.interface.menu.sys.platform", plataforma), \
+                patch.dict("os.environ", ambiente, clear=True), \
+                patch("caixa_eletronico.interface.menu.getpass", return_value="1111"), \
+                patch("builtins.input", return_value=" 2222 "):
+            return menu.ler_pin("PIN: ")
+
+    def test_terminal_comum_esconde_o_pin(self):
+        self.assertEqual(self.ler("win32", {}), "1111")
+
+    def test_vscode_no_windows_usa_input(self):
+        self.assertEqual(self.ler("win32", {"TERM_PROGRAM": "vscode"}), "2222")
+
+    def test_vscode_fora_do_windows_esconde_o_pin(self):
+        self.assertEqual(self.ler("linux", {"TERM_PROGRAM": "vscode"}), "1111")
 
 class TestFormatarMoeda(unittest.TestCase):
     def test_formato_brasileiro(self):

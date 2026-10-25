@@ -1,3 +1,5 @@
+import os
+import sys
 import time
 
 from getpass import getpass
@@ -26,9 +28,25 @@ MENSAGEM_BLOQUEIO = (
 )
 
 
+def terminal_esconde_pin():
+    # No Windows, o terminal integrado do VS Code envia as teclas como
+    # sequências de escape; o getpass nunca recebe o Enter e fica travado.
+    return not (
+        sys.platform == "win32"
+        and os.environ.get("TERM_PROGRAM") == "vscode"
+    )
+
+
+def ler_pin(mensagem):
+    if terminal_esconde_pin():
+        return getpass(mensagem)
+
+    return input(mensagem).strip()
+
+
 def cadastrar_pin(conta):
     while True:
-        pin = getpass("Novo PIN (4 a 6 dígitos): ")
+        pin = ler_pin("Novo PIN (4 a 6 dígitos): ")
 
         try:
             validar_formato_pin(pin)
@@ -37,7 +55,7 @@ def cadastrar_pin(conta):
             print(erro)
             continue
 
-        if getpass("Confirme o PIN: ") != pin:
+        if ler_pin("Confirme o PIN: ") != pin:
             print("Os PINs não conferem. Tente novamente.")
             continue
 
@@ -47,7 +65,7 @@ def cadastrar_pin(conta):
 
 
 def tentar_pin(conta, mensagem="Digite seu PIN: "):
-    acertou = conta.autenticar(getpass(mensagem))
+    acertou = conta.autenticar(ler_pin(mensagem))
 
     # Salva a cada tentativa para o bloqueio valer mesmo se o programa for fechado
     persistencia.salvar_conta(conta)
@@ -110,6 +128,12 @@ def realizar_saque(conta, valor):
 
 def main():
     conta = persistencia.carregar_conta()
+
+    if not terminal_esconde_pin():
+        print(
+            "Aviso: neste terminal o PIN ficará visível ao digitar. "
+            "Para escondê-lo, execute fora do VS Code."
+        )
 
     if not conta.possui_pin:
         print("Nenhum PIN cadastrado. Crie um PIN para proteger sua conta.")
