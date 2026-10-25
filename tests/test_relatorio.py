@@ -1,64 +1,53 @@
 import unittest
 import relatorio
 
+from decimal import Decimal
 from io import StringIO
 from contextlib import redirect_stdout
 
+from conta_bancaria import ContaBancaria
+
 class TestRelatorio(unittest.TestCase):
-    def test_relatorio_com_transacoes(self):
-        transacoes = [
-            {"tipo": "Depósito", "valor": 200.0, "saldo": 200.0},
-            {"tipo": "Depósito", "valor": 50.0, "saldo": 250.0},
-            {"tipo": "Saque", "valor": 80.0, "saldo": 170.0}
-        ]
+    def test_gerar_relatorio(self):
+        conta = ContaBancaria()
+        conta.depositar(200)
+        conta.depositar(50)
+        conta.sacar(80)
 
-        saida = StringIO()
+        resumo = relatorio.gerar_relatorio(conta.transacoes, conta.saldo)
 
-        with redirect_stdout(saida):
-            relatorio.mostrar_relatorio(transacoes, 170.0)
-
-        resultado = saida.getvalue()
-
-        self.assertIn("Saldo atual: R$ 170.00", resultado)
-        self.assertIn("Total depositado: R$ 250.00", resultado)
-        self.assertIn("Total sacado: R$ 80.00", resultado)
-        self.assertIn("Quantidade de depósitos: 2", resultado)
-        self.assertIn("Quantidade de saques: 1", resultado)
-        self.assertIn("Total de transações: 3", resultado)
+        self.assertEqual(resumo["saldo_atual"], Decimal("170.00"))
+        self.assertEqual(resumo["total_depositado"], Decimal("250.00"))
+        self.assertEqual(resumo["total_sacado"], Decimal("80.00"))
+        self.assertEqual(resumo["quantidade_depositos"], 2)
+        self.assertEqual(resumo["quantidade_saques"], 1)
+        self.assertEqual(resumo["total_transacoes"], 3)
 
     def test_relatorio_sem_transacoes(self):
-        transacoes = []
-        saida = StringIO()
+        resumo = relatorio.gerar_relatorio((), Decimal("0.00"))
 
-        with redirect_stdout(saida):
-            relatorio.mostrar_relatorio(transacoes, 0.0)
+        self.assertEqual(resumo["total_depositado"], Decimal("0.00"))
+        self.assertEqual(resumo["total_sacado"], Decimal("0.00"))
+        self.assertEqual(resumo["total_transacoes"], 0)
 
-        resultado = saida.getvalue()
-
-        self.assertIn("Saldo atual: R$ 0.00", resultado)
-        self.assertIn("Total depositado: R$ 0.00", resultado)
-        self.assertIn("Total sacado: R$ 0.00", resultado)
-        self.assertIn("Quantidade de depósitos: 0", resultado)
-        self.assertIn("Quantidade de saques: 0", resultado)
-        self.assertIn("Total de transações: 0", resultado)
-
-    def test_relatorio_apenas_depositos(self):
-        transacoes = [
-            {"tipo": "Depósito", "valor": 100.0, "saldo": 100.0},
-            {"tipo": "Depósito", "valor": 50.0, "saldo": 150.0}
-        ]
+    def test_mostrar_relatorio(self):
+        conta = ContaBancaria()
+        conta.depositar(1500)
+        conta.sacar(80)
 
         saida = StringIO()
 
         with redirect_stdout(saida):
-            relatorio.mostrar_relatorio(transacoes, 150.0)
+            relatorio.mostrar_relatorio(conta.transacoes, conta.saldo)
 
         resultado = saida.getvalue()
 
-        self.assertIn("Total depositado: R$ 150.00", resultado)
-        self.assertIn("Total sacado: R$ 0.00", resultado)
-        self.assertIn("Quantidade de depósitos: 2", resultado)
-        self.assertIn("Quantidade de saques: 0", resultado)
+        self.assertIn("Saldo atual: R$ 1.420,00", resultado)
+        self.assertIn("Total depositado: R$ 1.500,00", resultado)
+        self.assertIn("Total sacado: R$ 80,00", resultado)
+        self.assertIn("Quantidade de depósitos: 1", resultado)
+        self.assertIn("Quantidade de saques: 1", resultado)
+        self.assertIn("Total de transações: 2", resultado)
 
 if __name__ == "__main__":
     unittest.main()

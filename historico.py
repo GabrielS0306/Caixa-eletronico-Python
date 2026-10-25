@@ -1,22 +1,15 @@
-def registrar_transacao(historico, tipo, valor, saldo):
-    transacao = {
-        "tipo": tipo,
-        "valor": valor,
-        "saldo": saldo
-    }
-
-    historico.append(transacao)
+from formatacao import formatar_moeda
 
 
-def mostrar_historico(historico):
-    if not historico:
+def mostrar_historico(transacoes):
+    if not transacoes:
         print("Nenhuma transação registrada.")
         return
 
     print("\n=== HISTÓRICO ===")
 
-    for item in historico:
-        print(f"Tipo: {item['tipo']}")
-        print(f"Valor: R$ {item['valor']:.2f}")
-        print(f"Saldo após operação: R$ {item['saldo']:.2f}")
+    for item in transacoes:
+        print(f"Tipo: {item.tipo.value}")
+        print(f"Valor: {formatar_moeda(item.valor)}")
+        print(f"Saldo após operação: {formatar_moeda(item.saldo)}")
         print("--------------------")

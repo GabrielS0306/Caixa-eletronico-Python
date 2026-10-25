@@ -1,0 +1,118 @@
+import unittest
+
+from decimal import Decimal
+
+from conta_bancaria import (
+    ContaBancaria,
+    SaldoInsuficienteError,
+    TipoTransacao,
+    ValorInvalidoError
+)
+
+class TestDeposito(unittest.TestCase):
+    def setUp(self):
+        self.conta = ContaBancaria(saldo=50)
+
+    def test_deposito_valido(self):
+        resultado = self.conta.depositar(100)
+
+        self.assertEqual(resultado, Decimal("150.00"))
+        self.assertEqual(self.conta.saldo, Decimal("150.00"))
+
+    def test_deposito_zero(self):
+        with self.assertRaises(ValorInvalidoError):
+            self.conta.depositar(0)
+
+        self.assertEqual(self.conta.saldo, Decimal("50.00"))
+
+    def test_deposito_negativo(self):
+        with self.assertRaises(ValorInvalidoError):
+            self.conta.depositar(-20)
+
+        self.assertEqual(self.conta.saldo, Decimal("50.00"))
+
+    def test_deposito_registra_transacao(self):
+        self.conta.depositar("25.50")
+
+        transacao = self.conta.transacoes[0]
+
+        self.assertEqual(transacao.tipo, TipoTransacao.DEPOSITO)
+        self.assertEqual(transacao.valor, Decimal("25.50"))
+        self.assertEqual(transacao.saldo, Decimal("75.50"))
+
+class TestSaque(unittest.TestCase):
+    def setUp(self):
+        self.conta = ContaBancaria(saldo=100)
+
+    def test_saque_valido(self):
+        resultado = self.conta.sacar(30)
+
+        self.assertEqual(resultado, Decimal("70.00"))
+
+    def test_saque_saldo_insuficiente(self):
+        with self.assertRaises(SaldoInsuficienteError):
+            self.conta.sacar(150)
+
+        self.assertEqual(self.conta.saldo, Decimal("100.00"))
+        self.assertEqual(self.conta.transacoes, ())
+
+    def test_saque_zero(self):
+        with self.assertRaises(ValorInvalidoError):
+            self.conta.sacar(0)
+
+    def test_saque_negativo(self):
+        with self.assertRaises(ValorInvalidoError):
+            self.conta.sacar(-20)
+
+        self.assertEqual(self.conta.saldo, Decimal("100.00"))
+
+    def test_saque_saldo_exato(self):
+        resultado = self.conta.sacar(100)
+
+        self.assertEqual(resultado, Decimal("0.00"))
+
+    def test_saque_registra_transacao(self):
+        self.conta.sacar(40)
+
+        transacao = self.conta.transacoes[0]
+
+        self.assertEqual(transacao.tipo, TipoTransacao.SAQUE)
+        self.assertEqual(transacao.saldo, Decimal("60.00"))
+
+class TestValidacao(unittest.TestCase):
+    def setUp(self):
+        self.conta = ContaBancaria()
+
+    def test_sem_erro_de_arredondamento(self):
+        self.conta.depositar(0.1)
+        self.conta.depositar(0.2)
+
+        self.assertEqual(self.conta.saldo, Decimal("0.30"))
+
+    def test_mais_de_duas_casas_decimais(self):
+        with self.assertRaises(ValorInvalidoError):
+            self.conta.depositar("10.555")
+
+    def test_valores_nao_finitos(self):
+        for valor in ("nan", "inf", float("inf"), float("nan")):
+            with self.subTest(valor=valor):
+                with self.assertRaises(ValorInvalidoError):
+                    self.conta.depositar(valor)
+
+    def test_texto_invalido(self):
+        with self.assertRaises(ValorInvalidoError):
+            self.conta.depositar("abc")
+
+    def test_booleano(self):
+        with self.assertRaises(ValorInvalidoError):
+            self.conta.depositar(True)
+
+    def test_saldo_inicial_negativo(self):
+        with self.assertRaises(ValorInvalidoError):
+            ContaBancaria(saldo=-10)
+
+    def test_transacoes_nao_podem_ser_alteradas_por_fora(self):
+        self.assertIsInstance(self.conta.transacoes, tuple)
+
+if __name__ == "__main__":
+    unittest.main()

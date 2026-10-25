@@ -1,4 +1,3 @@
-
 # Cache do Python
 __pycache__/
 *.py[cod]
@@ -18,20 +17,3 @@ Thumbs.db
 
 # Dados locais do caixa eletrônico
 dados.json
-
-# Cache do Python
-__pycache__/
-*.py[cod]
-
-# Ambientes virtuais
-venv/
-.venv/
-env/
-
-# Configurações de editores
-.vscode/
-.idea/
-
-# Sistema operacional
-.DS_Store
-Thumbs.db
