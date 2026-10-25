@@ -29,6 +29,9 @@ class TestPersistencia(unittest.TestCase):
     def escrever_json(self, dados):
         self.arquivo.write_text(json.dumps(dados), encoding="utf-8")
 
+    def arquivos_na_pasta(self):
+        return sorted(p.name for p in Path(self.diretorio.name).iterdir())
+
     def carregar_silencioso(self):
         with redirect_stdout(StringIO()):
             return persistencia.carregar_conta()
@@ -206,6 +209,63 @@ class TestPersistencia(unittest.TestCase):
                         "transacoes": [],
                         "seguranca": seguranca
                     })
+
+    def salvar_original_e_alterar(self):
+        conta = ContaBancaria(saldo=100)
+        persistencia.salvar_conta(conta)
+
+        original = self.arquivo.read_text(encoding="utf-8")
+        conta.depositar(50)
+
+        return conta, original
+
+    def test_salvar_nao_deixa_arquivo_temporario(self):
+        persistencia.salvar_conta(ContaBancaria(saldo=10))
+        persistencia.salvar_conta(ContaBancaria(saldo=20))
+
+        self.assertEqual(self.arquivos_na_pasta(), ["dados.json"])
+        self.assertEqual(persistencia.carregar_conta().saldo, Decimal("20.00"))
+
+    def test_erro_no_meio_da_gravacao_preserva_original(self):
+        conta, original = self.salvar_original_e_alterar()
+
+        def gravar_pela_metade(dados, arquivo, **opcoes):
+            arquivo.write('{"saldo": "15')
+            raise OSError("disco cheio")
+
+        with patch("json.dump", side_effect=gravar_pela_metade):
+            with redirect_stdout(StringIO()) as saida:
+                sucesso = persistencia.salvar_conta(conta)
+
+        self.assertFalse(sucesso)
+        self.assertIn("disco cheio", saida.getvalue())
+        self.assertEqual(self.arquivo.read_text(encoding="utf-8"), original)
+        self.assertEqual(self.arquivos_na_pasta(), ["dados.json"])
+
+    def test_ctrl_c_no_meio_da_gravacao_preserva_original(self):
+        conta, original = self.salvar_original_e_alterar()
+
+        def interromper(dados, arquivo, **opcoes):
+            arquivo.write('{"saldo": "15')
+            raise KeyboardInterrupt
+
+        with patch("json.dump", side_effect=interromper):
+            with self.assertRaises(KeyboardInterrupt):
+                persistencia.salvar_conta(conta)
+
+        self.assertEqual(self.arquivo.read_text(encoding="utf-8"), original)
+        self.assertEqual(self.arquivos_na_pasta(), ["dados.json"])
+
+    def test_falha_na_troca_preserva_original(self):
+        conta, original = self.salvar_original_e_alterar()
+
+        with patch("os.replace", side_effect=PermissionError("em uso")):
+            with redirect_stdout(StringIO()):
+                sucesso = persistencia.salvar_conta(conta)
+
+        self.assertFalse(sucesso)
+        self.assertEqual(self.arquivo.read_text(encoding="utf-8"), original)
+        self.assertEqual(self.arquivos_na_pasta(), ["dados.json"])
 
     def test_dados_invalidos_iniciam_conta_vazia(self):
         self.escrever_json({"saldo": "abc", "transacoes": []})

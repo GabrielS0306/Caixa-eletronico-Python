@@ -17,3 +17,4 @@ Thumbs.db
 
 # Dados locais do caixa eletrônico
 dados.json
+.dados-*.tmp

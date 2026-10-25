@@ -12,7 +12,7 @@ Projeto de estudo desenvolvido em Python para praticar os fundamentos da linguag
 * Consulta de saldo
 * Histórico de transações com data e hora
 * Relatório da conta (totais e quantidades de depósitos e saques)
-* Dados salvos em `dados.json` entre execuções
+* Dados salvos em `dados.json` entre execuções, com gravação segura (o arquivo nunca fica pela metade)
 * Valores monetários calculados com `Decimal`, sem erros de arredondamento
 * Valores exibidos no formato brasileiro (`R$ 1.234,56`)
 

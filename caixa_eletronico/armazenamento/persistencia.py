@@ -1,4 +1,8 @@
 import json
+import os
+import tempfile
+
+from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 
@@ -138,8 +142,21 @@ def dados_para_conta(dados):
 
 
 def salvar_conta(conta):
+    # Grava num arquivo temporário e só então substitui o dados.json. Se o
+    # programa for interrompido no meio, o arquivo original continua intacto.
+    temporario = None
+
     try:
-        with open(ARQUIVO_DADOS, "w", encoding="utf-8") as arquivo:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=ARQUIVO_DADOS.parent,
+            prefix=".dados-",
+            suffix=".tmp",
+            delete=False
+        ) as arquivo:
+            temporario = Path(arquivo.name)
+
             json.dump(
                 conta_para_dados(conta),
                 arquivo,
@@ -147,11 +164,23 @@ def salvar_conta(conta):
                 ensure_ascii=False
             )
 
+            # Garante que os dados estão no disco antes da troca
+            arquivo.flush()
+            os.fsync(arquivo.fileno())
+
+        # os.replace troca o arquivo de uma vez: não existe meio-termo
+        os.replace(temporario, ARQUIVO_DADOS)
         return True
 
     except OSError as erro:
         print(f"Erro ao salvar os dados: {erro}")
         return False
+
+    finally:
+        # Depois de um replace bem-sucedido o temporário já não existe
+        if temporario is not None:
+            with suppress(OSError):
+                temporario.unlink(missing_ok=True)
 
 
 def carregar_conta():
