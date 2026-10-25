@@ -3,6 +3,8 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from enum import Enum
 
+from seguranca import MAX_TENTATIVAS, ContaBloqueadaError, Senha
+
 CENTAVO = Decimal("0.01")
 
 
@@ -70,7 +72,10 @@ def validar_valor(valor):
 
 
 class ContaBancaria:
-    def __init__(self, titular="", saldo=0, transacoes=None):
+    def __init__(
+        self, titular="", saldo=0, transacoes=None,
+        senha=None, tentativas_falhas=0
+    ):
         saldo = arredondar(para_decimal(saldo))
 
         if saldo < 0:
@@ -79,6 +84,8 @@ class ContaBancaria:
         self.titular = titular
         self._saldo = saldo
         self._transacoes = list(transacoes or [])
+        self._senha = senha
+        self._tentativas_falhas = tentativas_falhas
 
     @property
     def saldo(self):
@@ -87,6 +94,44 @@ class ContaBancaria:
     @property
     def transacoes(self):
         return tuple(self._transacoes)
+
+    @property
+    def senha(self):
+        return self._senha
+
+    @property
+    def possui_pin(self):
+        return self._senha is not None
+
+    @property
+    def tentativas_falhas(self):
+        return self._tentativas_falhas
+
+    @property
+    def tentativas_restantes(self):
+        return max(MAX_TENTATIVAS - self._tentativas_falhas, 0)
+
+    @property
+    def bloqueada(self):
+        return self._tentativas_falhas >= MAX_TENTATIVAS
+
+    def definir_pin(self, pin):
+        self._senha = Senha.criar(pin)
+        self._tentativas_falhas = 0
+
+    def autenticar(self, pin):
+        if self._senha is None:
+            raise ValueError("Nenhum PIN cadastrado.")
+
+        if self.bloqueada:
+            raise ContaBloqueadaError("Conta bloqueada.")
+
+        if self._senha.confere(pin):
+            self._tentativas_falhas = 0
+            return True
+
+        self._tentativas_falhas += 1
+        return False
 
     def depositar(self, valor):
         valor = validar_valor(valor)

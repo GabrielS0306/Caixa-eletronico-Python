@@ -4,6 +4,8 @@ Projeto de estudo desenvolvido em Python para praticar os fundamentos da linguag
 
 ## Funcionalidades
 
+* Acesso protegido por PIN de 4 a 6 dígitos, com bloqueio após 3 tentativas incorretas
+* Alteração de PIN pelo menu
 * Depósitos e saques com validação de valores
 * Bloqueio de saques com saldo insuficiente
 * Saque em cédulas de R$ 200, 100, 50, 20 e 10, com o menor número de notas possível
@@ -25,6 +27,7 @@ caixa_eletronico/
 ├── caixa.py            # Menu interativo e leitura de valores
 ├── conta_bancaria.py   # Classe ContaBancaria e regras de negócio
 ├── cedulas.py          # Cálculo das cédulas entregues no saque
+├── seguranca.py        # PIN: validação e hash com PBKDF2
 ├── historico.py        # Exibição do histórico de transações
 ├── relatorio.py        # Cálculo e exibição do relatório da conta
 ├── persistencia.py     # Leitura e gravação do dados.json
@@ -69,6 +72,10 @@ Praticar funções, classes, módulos, exceções, condicionais, laços de repet
 ## Observação
 
 Este projeto tem finalidade educacional. O arquivo `dados.json` é criado automaticamente na primeira operação e não é versionado no Git.
+
+O PIN é salvo apenas como hash (PBKDF2 com salt aleatório), nunca em texto puro. Na primeira execução, o programa pede para cadastrar um PIN.
+
+Para desbloquear a conta durante os estudos, altere `"tentativas_falhas"` para `0` no `dados.json`. Para cadastrar um novo PIN, troque a seção `"seguranca"` por `null`.
 
 ## Autor
 

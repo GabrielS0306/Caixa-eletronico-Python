@@ -159,6 +159,54 @@ class TestPersistencia(unittest.TestCase):
         with self.assertRaises(ValueError):
             persistencia.dados_para_conta(dados)
 
+    def test_salvar_e_carregar_pin(self):
+        conta = ContaBancaria()
+        conta.definir_pin("1234")
+        conta.autenticar("0000")
+
+        persistencia.salvar_conta(conta)
+
+        carregada = persistencia.carregar_conta()
+
+        self.assertTrue(carregada.autenticar("1234"))
+
+        dados = json.loads(self.arquivo.read_text(encoding="utf-8"))
+
+        self.assertEqual(dados["seguranca"]["tentativas_falhas"], 1)
+        self.assertNotIn("1234", self.arquivo.read_text(encoding="utf-8"))
+
+    def test_bloqueio_continua_apos_carregar(self):
+        conta = ContaBancaria()
+        conta.definir_pin("1234")
+
+        for _ in range(3):
+            conta.autenticar("0000")
+
+        persistencia.salvar_conta(conta)
+
+        self.assertTrue(persistencia.carregar_conta().bloqueada)
+
+    def test_formato_antigo_sem_pin(self):
+        self.escrever_json({"saldo": "10", "transacoes": []})
+
+        self.assertFalse(persistencia.carregar_conta().possui_pin)
+
+    def test_seguranca_invalida(self):
+        for seguranca in (
+            "abc",
+            {"salt": "zz", "hash": "00"},
+            {"salt": "", "hash": "00"},
+            {"salt": "00", "hash": "00", "tentativas_falhas": -1},
+            {"salt": "00", "hash": "00", "tentativas_falhas": True}
+        ):
+            with self.subTest(seguranca=seguranca):
+                with self.assertRaises(ValueError):
+                    persistencia.dados_para_conta({
+                        "saldo": "10",
+                        "transacoes": [],
+                        "seguranca": seguranca
+                    })
+
     def test_dados_invalidos_iniciam_conta_vazia(self):
         self.escrever_json({"saldo": "abc", "transacoes": []})
 

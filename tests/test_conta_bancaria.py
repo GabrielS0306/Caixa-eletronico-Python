@@ -10,6 +10,7 @@ from conta_bancaria import (
     TipoTransacao,
     ValorInvalidoError
 )
+from seguranca import ContaBloqueadaError
 
 class TestDeposito(unittest.TestCase):
     def setUp(self):
@@ -133,6 +134,41 @@ class TestDataTransacao(unittest.TestCase):
         conta.depositar(10)
 
         self.assertEqual(conta.transacoes[0].data.microsecond, 0)
+
+class TestPin(unittest.TestCase):
+    def setUp(self):
+        self.conta = ContaBancaria()
+        self.conta.definir_pin("1234")
+
+    def test_conta_nova_sem_pin(self):
+        self.assertFalse(ContaBancaria().possui_pin)
+
+    def test_pin_correto(self):
+        self.assertTrue(self.conta.possui_pin)
+        self.assertTrue(self.conta.autenticar("1234"))
+
+    def test_pin_incorreto_reduz_tentativas(self):
+        self.assertFalse(self.conta.autenticar("0000"))
+        self.assertEqual(self.conta.tentativas_restantes, 2)
+
+    def test_acerto_zera_tentativas(self):
+        self.conta.autenticar("0000")
+        self.conta.autenticar("1234")
+
+        self.assertEqual(self.conta.tentativas_falhas, 0)
+
+    def test_tres_erros_bloqueiam_a_conta(self):
+        for _ in range(3):
+            self.conta.autenticar("0000")
+
+        self.assertTrue(self.conta.bloqueada)
+
+        with self.assertRaises(ContaBloqueadaError):
+            self.conta.autenticar("1234")
+
+    def test_autenticar_sem_pin(self):
+        with self.assertRaises(ValueError):
+            ContaBancaria().autenticar("1234")
 
 if __name__ == "__main__":
     unittest.main()

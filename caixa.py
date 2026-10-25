@@ -1,5 +1,7 @@
 import time
 
+from getpass import getpass
+
 import cedulas
 import historico
 import relatorio
@@ -12,6 +14,64 @@ from conta_bancaria import (
     validar_valor
 )
 from formatacao import formatar_moeda
+from seguranca import MAX_TENTATIVAS, PinInvalidoError, validar_formato_pin
+
+MENSAGEM_BLOQUEIO = (
+    f"Conta bloqueada após {MAX_TENTATIVAS} tentativas incorretas. "
+    "Procure sua agência."
+)
+
+
+def cadastrar_pin(conta):
+    while True:
+        pin = getpass("Novo PIN (4 a 6 dígitos): ")
+
+        try:
+            validar_formato_pin(pin)
+
+        except PinInvalidoError as erro:
+            print(erro)
+            continue
+
+        if getpass("Confirme o PIN: ") != pin:
+            print("Os PINs não conferem. Tente novamente.")
+            continue
+
+        conta.definir_pin(pin)
+        print("PIN cadastrado com sucesso!")
+        return
+
+
+def tentar_pin(conta, mensagem="Digite seu PIN: "):
+    acertou = conta.autenticar(getpass(mensagem))
+
+    # Salva a cada tentativa para o bloqueio valer mesmo se o programa for fechado
+    persistencia.salvar_conta(conta)
+
+    if acertou:
+        return True
+
+    if conta.bloqueada:
+        print(MENSAGEM_BLOQUEIO)
+    else:
+        print(
+            "PIN incorreto! Tentativas restantes: "
+            f"{conta.tentativas_restantes}"
+        )
+
+    return False
+
+
+def autenticar(conta):
+    if conta.bloqueada:
+        print(MENSAGEM_BLOQUEIO)
+        return False
+
+    while not conta.bloqueada:
+        if tentar_pin(conta):
+            return True
+
+    return False
 
 
 def obter_valor(mensagem):
@@ -47,6 +107,14 @@ def realizar_saque(conta, valor):
 def main():
     conta = persistencia.carregar_conta()
 
+    if not conta.possui_pin:
+        print("Nenhum PIN cadastrado. Crie um PIN para proteger sua conta.")
+        cadastrar_pin(conta)
+        persistencia.salvar_conta(conta)
+
+    elif not autenticar(conta):
+        return
+
     while True:
         print("\n===== CAIXA ELETRÔNICO =====")
         print("1 - Depósito")
@@ -54,6 +122,7 @@ def main():
         print("3 - Consultar saldo")
         print("4 - Histórico de transações")
         print("5 - Relatório da conta")
+        print("6 - Alterar PIN")
         print("0 - Sair")
 
         opcao = input("Escolha uma opção: ").strip()
@@ -83,6 +152,14 @@ def main():
 
         elif opcao == "5":
             relatorio.mostrar_relatorio(conta.transacoes, conta.saldo)
+
+        elif opcao == "6":
+            if tentar_pin(conta, "PIN atual: "):
+                cadastrar_pin(conta)
+                persistencia.salvar_conta(conta)
+
+            elif conta.bloqueada:
+                break
 
         elif opcao == "0":
             print("Saindo do caixa eletrônico...")

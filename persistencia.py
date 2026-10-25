@@ -10,6 +10,7 @@ from conta_bancaria import (
     arredondar,
     para_decimal
 )
+from seguranca import Senha
 
 ARQUIVO_DADOS = Path(__file__).with_name("dados.json")
 
@@ -36,9 +37,50 @@ def converter_data(data):
         raise ValueError(f"Data inválida: {data!r}") from None
 
 
+def converter_seguranca(dados):
+    # Contas salvas antes do PIN existir não têm a seção de segurança
+    if dados is None:
+        return None, 0
+
+    if not isinstance(dados, dict):
+        raise ValueError("Dados de segurança inválidos.")
+
+    salt = dados.get("salt")
+    hash_pin = dados.get("hash")
+    tentativas = dados.get("tentativas_falhas", 0)
+
+    if not (isinstance(salt, str) and salt and isinstance(hash_pin, str) and hash_pin):
+        raise ValueError("Dados de segurança inválidos.")
+
+    try:
+        bytes.fromhex(salt)
+        bytes.fromhex(hash_pin)
+    except ValueError:
+        raise ValueError("Dados de segurança inválidos.") from None
+
+    if (
+        not isinstance(tentativas, int)
+        or isinstance(tentativas, bool)
+        or tentativas < 0
+    ):
+        raise ValueError("Número de tentativas inválido.")
+
+    return Senha(salt, hash_pin), tentativas
+
+
 def conta_para_dados(conta):
+    seguranca = None
+
+    if conta.senha is not None:
+        seguranca = {
+            "salt": conta.senha.salt,
+            "hash": conta.senha.hash_pin,
+            "tentativas_falhas": conta.tentativas_falhas
+        }
+
     return {
         "titular": conta.titular,
+        "seguranca": seguranca,
         "saldo": str(conta.saldo),
         "transacoes": [
             {
@@ -89,7 +131,9 @@ def dados_para_conta(dados):
 
         transacoes.append(Transacao(tipo, valor, saldo_transacao, data))
 
-    return ContaBancaria(titular, saldo, transacoes)
+    senha, tentativas = converter_seguranca(dados.get("seguranca"))
+
+    return ContaBancaria(titular, saldo, transacoes, senha, tentativas)
 
 
 def salvar_conta(conta):
