@@ -11,6 +11,7 @@ Projeto de estudo desenvolvido em Python para praticar os fundamentos da linguag
 * Saque em cédulas de R$ 200, 100, 50, 20 e 10, com o menor número de notas possível
 * Consulta de saldo
 * Histórico de transações com data e hora
+* Extrato por período, com exportação para CSV pronto para abrir no Excel
 * Relatório da conta (totais e quantidades de depósitos e saques)
 * Dados salvos em `dados.json` entre execuções, com gravação segura (o arquivo nunca fica pela metade)
 * Valores monetários calculados com `Decimal`, sem erros de arredondamento
@@ -30,15 +31,18 @@ caixa_eletronico/
 │   ├── nucleo/                 # Regras de negócio
 │   │   ├── conta_bancaria.py   # Classe ContaBancaria, depósitos e saques
 │   │   ├── cedulas.py          # Cálculo das cédulas entregues no saque
+│   │   ├── extrato.py          # Filtro de transações por período
 │   │   └── seguranca.py        # PIN: validação e hash com PBKDF2
 │   ├── armazenamento/          # Leitura e gravação dos dados
-│   │   └── persistencia.py     # Conversão da conta para o dados.json
+│   │   ├── persistencia.py     # Conversão da conta para o dados.json
+│   │   └── exportacao.py       # Exportação do extrato para CSV
 │   └── interface/              # Interação com o usuário no terminal
 │       ├── menu.py             # Menu, PIN e leitura de valores
 │       ├── historico.py        # Exibição do histórico de transações
 │       └── relatorio.py        # Cálculo e exibição do relatório da conta
 ├── tests/                      # Testes automatizados (unittest)
 ├── dados.json                  # Criado ao usar o programa (fora do Git)
+├── extratos/                   # CSVs exportados (fora do Git)
 ├── README.md
 └── .gitignore
 ```

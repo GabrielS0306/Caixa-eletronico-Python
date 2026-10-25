@@ -1,12 +1,12 @@
 from caixa_eletronico.formatacao import formatar_data, formatar_moeda
 
 
-def mostrar_historico(transacoes):
+def mostrar_historico(transacoes, titulo="HISTÓRICO"):
     if not transacoes:
         print("Nenhuma transação registrada.")
         return
 
-    print("\n=== HISTÓRICO ===")
+    print(f"\n=== {titulo} ===")
 
     for item in transacoes:
         print(f"Data: {formatar_data(item.data)}")

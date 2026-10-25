@@ -1,8 +1,10 @@
 import unittest
 
+from datetime import date, datetime
 from decimal import Decimal
 from io import StringIO
 from contextlib import redirect_stdout
+from pathlib import Path
 from unittest.mock import patch
 
 from caixa_eletronico.interface import menu
@@ -132,6 +134,91 @@ class TestPin(unittest.TestCase):
         self.assertIn("O PIN deve ter de 4 a 6 dígitos", resultado)
         self.assertIn("Os PINs não conferem", resultado)
         self.assertTrue(self.conta.autenticar("5678"))
+
+class TestObterData(unittest.TestCase):
+    def obter(self, entradas):
+        saida = StringIO()
+
+        with patch("builtins.input", side_effect=entradas):
+            with redirect_stdout(saida):
+                return menu.obter_data("Data: "), saida.getvalue()
+
+    def test_data_valida(self):
+        data, _ = self.obter(["25/10/2026"])
+
+        self.assertEqual(data, date(2026, 10, 25))
+
+    def test_em_branco_nao_limita(self):
+        data, _ = self.obter(["  "])
+
+        self.assertIsNone(data)
+
+    def test_pede_de_novo_se_invalida(self):
+        data, resultado = self.obter(["2026-10-25", "31/02/2026", "01/10/2026"])
+
+        self.assertEqual(data, date(2026, 10, 1))
+        self.assertEqual(resultado.count("Data inválida!"), 2)
+
+class TestEmitirExtrato(unittest.TestCase):
+    def setUp(self):
+        self.conta = ContaBancaria()
+
+        for dia, valor in ((1, 100), (15, 50), (31, 30)):
+            with patch(
+                "caixa_eletronico.nucleo.conta_bancaria.agora",
+                return_value=datetime(2026, 10, dia, 10, 0)
+            ):
+                self.conta.depositar(valor)
+
+        patcher = patch(
+            "caixa_eletronico.interface.menu.exportacao.exportar_csv",
+            return_value=Path("extratos/extrato.csv")
+        )
+        self.exportar = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def emitir(self, entradas):
+        saida = StringIO()
+
+        with patch("builtins.input", side_effect=entradas):
+            with redirect_stdout(saida):
+                menu.emitir_extrato(self.conta)
+
+        return saida.getvalue()
+
+    def test_extrato_do_periodo_sem_exportar(self):
+        resultado = self.emitir(["10/10/2026", "31/10/2026", "n"])
+
+        self.assertIn("=== EXTRATO ===", resultado)
+        self.assertNotIn("Data: 01/10/2026", resultado)
+        self.assertIn("Data: 15/10/2026", resultado)
+        self.assertIn("Total depositado no período: R$ 80,00", resultado)
+        self.exportar.assert_not_called()
+
+    def test_exporta_as_transacoes_filtradas(self):
+        resultado = self.emitir(["", "15/10/2026", "s"])
+
+        transacoes = self.exportar.call_args.args[0]
+
+        self.assertEqual(len(transacoes), 2)
+        self.assertIn("Extrato salvo em:", resultado)
+
+    def test_periodo_sem_transacoes(self):
+        resultado = self.emitir(["01/11/2026", "30/11/2026"])
+
+        self.assertIn("Nenhuma transação no período", resultado)
+
+    def test_periodo_invertido(self):
+        resultado = self.emitir(["31/10/2026", "01/10/2026"])
+
+        self.assertIn("A data inicial deve ser anterior", resultado)
+
+    def test_erro_ao_exportar(self):
+        self.exportar.side_effect = PermissionError("arquivo aberto no Excel")
+
+        resultado = self.emitir(["", "", "s"])
+
+        self.assertIn("Erro ao exportar o extrato", resultado)
 
 class TestLerPin(unittest.TestCase):
     def ler(self, plataforma, ambiente):

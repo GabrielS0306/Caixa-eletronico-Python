@@ -2,11 +2,14 @@ import os
 import sys
 import time
 
+from datetime import datetime
 from getpass import getpass
 
 from caixa_eletronico.nucleo import cedulas
+from caixa_eletronico.nucleo import extrato
 from caixa_eletronico.interface import historico
 from caixa_eletronico.interface import relatorio
+from caixa_eletronico.armazenamento import exportacao
 from caixa_eletronico.armazenamento import persistencia
 
 from caixa_eletronico.nucleo.cedulas import CedulasIndisponiveisError
@@ -126,6 +129,66 @@ def realizar_saque(conta, valor):
     return True
 
 
+def obter_data(mensagem):
+    while True:
+        texto = input(mensagem).strip()
+
+        if not texto:
+            return None
+
+        try:
+            return datetime.strptime(texto, "%d/%m/%Y").date()
+
+        except ValueError:
+            print("Data inválida! Use o formato dd/mm/aaaa.")
+
+
+def emitir_extrato(conta):
+    print("\nDeixe em branco para não limitar o período.")
+    inicio = obter_data("Data inicial (dd/mm/aaaa): ")
+    fim = obter_data("Data final (dd/mm/aaaa): ")
+
+    try:
+        transacoes = extrato.filtrar_por_periodo(
+            conta.transacoes, inicio, fim
+        )
+
+    except extrato.PeriodoInvalidoError as erro:
+        print(erro)
+        return
+
+    if not transacoes:
+        print("Nenhuma transação no período informado.")
+        return
+
+    historico.mostrar_historico(transacoes, titulo="EXTRATO")
+
+    resumo = relatorio.gerar_relatorio(transacoes, conta.saldo)
+
+    print(
+        "Total depositado no período: "
+        f"{formatar_moeda(resumo['total_depositado'])}"
+    )
+    print(
+        "Total sacado no período: "
+        f"{formatar_moeda(resumo['total_sacado'])}"
+    )
+
+    resposta = input("Exportar para CSV? (s/n): ").strip().lower()
+
+    if resposta != "s":
+        return
+
+    try:
+        caminho = exportacao.exportar_csv(transacoes)
+
+    except OSError as erro:
+        print(f"Erro ao exportar o extrato: {erro}")
+
+    else:
+        print(f"Extrato salvo em: {caminho}")
+
+
 def main():
     conta = persistencia.carregar_conta()
 
@@ -151,6 +214,7 @@ def main():
         print("4 - Histórico de transações")
         print("5 - Relatório da conta")
         print("6 - Alterar PIN")
+        print("7 - Extrato por período")
         print("0 - Sair")
 
         opcao = input("Escolha uma opção: ").strip()
@@ -188,6 +252,9 @@ def main():
 
             elif conta.bloqueada:
                 break
+
+        elif opcao == "7":
+            emitir_extrato(conta)
 
         elif opcao == "0":
             print("Saindo do caixa eletrônico...")
