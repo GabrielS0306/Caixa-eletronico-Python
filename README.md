@@ -7,7 +7,7 @@ Projeto de estudo desenvolvido em Python para praticar os fundamentos da linguag
 * Depósitos e saques com validação de valores
 * Bloqueio de saques com saldo insuficiente
 * Consulta de saldo
-* Histórico de transações
+* Histórico de transações com data e hora
 * Relatório da conta (totais e quantidades de depósitos e saques)
 * Dados salvos em `dados.json` entre execuções
 * Valores monetários calculados com `Decimal`, sem erros de arredondamento

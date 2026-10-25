@@ -2,6 +2,7 @@ import json
 import unittest
 import tempfile
 
+from datetime import datetime
 from decimal import Decimal
 from io import StringIO
 from contextlib import redirect_stdout
@@ -87,6 +88,40 @@ class TestPersistencia(unittest.TestCase):
         self.assertEqual(conta.titular, "")
         self.assertEqual(conta.saldo, Decimal("1170.00"))
         self.assertEqual(conta.transacoes[1].tipo, TipoTransacao.SAQUE)
+        self.assertIsNone(conta.transacoes[1].data)
+
+    def test_data_salva_em_formato_iso(self):
+        conta = ContaBancaria()
+
+        with patch(
+            "conta_bancaria.agora",
+            return_value=datetime(2026, 10, 25, 14, 30, 5)
+        ):
+            conta.depositar(10)
+
+        persistencia.salvar_conta(conta)
+
+        dados = json.loads(self.arquivo.read_text(encoding="utf-8"))
+
+        self.assertEqual(
+            dados["transacoes"][0]["data"], "2026-10-25T14:30:05"
+        )
+
+    def test_data_invalida(self):
+        dados = {
+            "saldo": "10",
+            "transacoes": [
+                {
+                    "tipo": "Depósito",
+                    "valor": "10",
+                    "saldo": "10",
+                    "data": "ontem"
+                }
+            ]
+        }
+
+        with self.assertRaises(ValueError):
+            persistencia.dados_para_conta(dados)
 
     def test_saldo_negativo(self):
         with self.assertRaises(ValueError):

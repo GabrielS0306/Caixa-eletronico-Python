@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from pathlib import Path
 
 from conta_bancaria import (
@@ -21,6 +22,20 @@ def converter_valor(valor):
     return arredondar(para_decimal(valor))
 
 
+def converter_data(data):
+    # Transações do formato antigo não têm data
+    if data is None:
+        return None
+
+    if not isinstance(data, str):
+        raise ValueError("Data com tipo inválido.")
+
+    try:
+        return datetime.fromisoformat(data)
+    except ValueError:
+        raise ValueError(f"Data inválida: {data!r}") from None
+
+
 def conta_para_dados(conta):
     return {
         "titular": conta.titular,
@@ -29,7 +44,8 @@ def conta_para_dados(conta):
             {
                 "tipo": item.tipo.value,
                 "valor": str(item.valor),
-                "saldo": str(item.saldo)
+                "saldo": str(item.saldo),
+                "data": item.data.isoformat() if item.data else None
             }
             for item in conta.transacoes
         ]
@@ -66,11 +82,12 @@ def dados_para_conta(dados):
 
         valor = converter_valor(item.get("valor"))
         saldo_transacao = converter_valor(item.get("saldo"))
+        data = converter_data(item.get("data"))
 
         if valor <= 0 or saldo_transacao < 0:
             raise ValueError("Valores de transação inválidos.")
 
-        transacoes.append(Transacao(tipo, valor, saldo_transacao))
+        transacoes.append(Transacao(tipo, valor, saldo_transacao, data))
 
     return ContaBancaria(titular, saldo, transacoes)
 

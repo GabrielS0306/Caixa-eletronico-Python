@@ -1,4 +1,4 @@
-from formatacao import formatar_moeda
+from formatacao import formatar_data, formatar_moeda
 
 
 def mostrar_historico(transacoes):
@@ -9,6 +9,7 @@ def mostrar_historico(transacoes):
     print("\n=== HISTÓRICO ===")
 
     for item in transacoes:
+        print(f"Data: {formatar_data(item.data)}")
         print(f"Tipo: {item.tipo.value}")
         print(f"Valor: {formatar_moeda(item.valor)}")
         print(f"Saldo após operação: {formatar_moeda(item.saldo)}")

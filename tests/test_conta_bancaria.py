@@ -1,6 +1,8 @@
 import unittest
 
+from datetime import datetime
 from decimal import Decimal
+from unittest.mock import patch
 
 from conta_bancaria import (
     ContaBancaria,
@@ -113,6 +115,24 @@ class TestValidacao(unittest.TestCase):
 
     def test_transacoes_nao_podem_ser_alteradas_por_fora(self):
         self.assertIsInstance(self.conta.transacoes, tuple)
+
+class TestDataTransacao(unittest.TestCase):
+    def test_transacao_registra_data_e_hora(self):
+        momento = datetime(2026, 10, 25, 14, 30, 5)
+        conta = ContaBancaria()
+
+        with patch("conta_bancaria.agora", return_value=momento):
+            conta.depositar(100)
+            conta.sacar(40)
+
+        self.assertEqual(conta.transacoes[0].data, momento)
+        self.assertEqual(conta.transacoes[1].data, momento)
+
+    def test_data_sem_microssegundos(self):
+        conta = ContaBancaria()
+        conta.depositar(10)
+
+        self.assertEqual(conta.transacoes[0].data.microsecond, 0)
 
 if __name__ == "__main__":
     unittest.main()

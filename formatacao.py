@@ -4,3 +4,10 @@ def formatar_moeda(valor):
     texto = texto.replace(",", "_").replace(".", ",").replace("_", ".")
 
     return f"R$ {texto}"
+
+
+def formatar_data(data):
+    if data is None:
+        return "não registrada"
+
+    return data.strftime("%d/%m/%Y %H:%M:%S")

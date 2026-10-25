@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from enum import Enum
 
@@ -23,6 +24,12 @@ class Transacao:
     tipo: TipoTransacao
     valor: Decimal
     saldo: Decimal
+    # None em transações antigas, salvas antes de a data ser registrada
+    data: datetime | None = None
+
+
+def agora():
+    return datetime.now().replace(microsecond=0)
 
 
 def para_decimal(valor):
@@ -101,4 +108,4 @@ class ContaBancaria:
         return self._saldo
 
     def _registrar(self, tipo, valor):
-        self._transacoes.append(Transacao(tipo, valor, self._saldo))
+        self._transacoes.append(Transacao(tipo, valor, self._saldo, agora()))
