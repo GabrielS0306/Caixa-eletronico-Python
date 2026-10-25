@@ -1,4 +1,4 @@
-from formatacao import formatar_data, formatar_moeda
+from caixa_eletronico.formatacao import formatar_data, formatar_moeda
 
 
 def mostrar_historico(transacoes):

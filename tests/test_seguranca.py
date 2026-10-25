@@ -1,6 +1,10 @@
 import unittest
 
-from seguranca import PinInvalidoError, Senha, validar_formato_pin
+from caixa_eletronico.nucleo.seguranca import (
+    PinInvalidoError,
+    Senha,
+    validar_formato_pin
+)
 
 class TestFormatoPin(unittest.TestCase):
     def test_pins_validos(self):

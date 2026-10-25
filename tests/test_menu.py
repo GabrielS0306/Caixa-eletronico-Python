@@ -5,16 +5,16 @@ from io import StringIO
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
-import caixa
+from caixa_eletronico.interface import menu
 
-from conta_bancaria import ContaBancaria
-from formatacao import formatar_moeda
+from caixa_eletronico.nucleo.conta_bancaria import ContaBancaria
+from caixa_eletronico.formatacao import formatar_moeda
 
 class TestObterValor(unittest.TestCase):
     def obter(self, entrada):
         with patch("builtins.input", return_value=entrada):
             with redirect_stdout(StringIO()):
-                return caixa.obter_valor("Valor: ")
+                return menu.obter_valor("Valor: ")
 
     def test_aceita_virgula(self):
         self.assertEqual(self.obter("10,50"), Decimal("10.50"))
@@ -32,7 +32,7 @@ class TestRealizarSaque(unittest.TestCase):
         saida = StringIO()
 
         with redirect_stdout(saida):
-            sucesso = caixa.realizar_saque(conta, Decimal(valor))
+            sucesso = menu.realizar_saque(conta, Decimal(valor))
 
         return sucesso, saida.getvalue()
 
@@ -69,7 +69,9 @@ class TestRealizarSaque(unittest.TestCase):
 class TestPin(unittest.TestCase):
     def setUp(self):
         # Evita gravar no dados.json real durante os testes
-        patcher = patch("caixa.persistencia.salvar_conta")
+        patcher = patch(
+            "caixa_eletronico.interface.menu.persistencia.salvar_conta"
+        )
         self.salvar = patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -79,20 +81,22 @@ class TestPin(unittest.TestCase):
     def executar(self, funcao, pins):
         saida = StringIO()
 
-        with patch("caixa.getpass", side_effect=pins):
+        with patch(
+            "caixa_eletronico.interface.menu.getpass", side_effect=pins
+        ):
             with redirect_stdout(saida):
                 resultado = funcao(self.conta)
 
         return resultado, saida.getvalue()
 
     def test_autenticar_na_primeira(self):
-        sucesso, _ = self.executar(caixa.autenticar, ["1234"])
+        sucesso, _ = self.executar(menu.autenticar, ["1234"])
 
         self.assertTrue(sucesso)
 
     def test_autenticar_depois_de_errar(self):
         sucesso, resultado = self.executar(
-            caixa.autenticar, ["0000", "1111", "1234"]
+            menu.autenticar, ["0000", "1111", "1234"]
         )
 
         self.assertTrue(sucesso)
@@ -102,7 +106,7 @@ class TestPin(unittest.TestCase):
 
     def test_tres_erros_bloqueiam(self):
         sucesso, resultado = self.executar(
-            caixa.autenticar, ["0000", "1111", "2222"]
+            menu.autenticar, ["0000", "1111", "2222"]
         )
 
         self.assertFalse(sucesso)
@@ -114,14 +118,14 @@ class TestPin(unittest.TestCase):
         for _ in range(3):
             self.conta.autenticar("0000")
 
-        sucesso, resultado = self.executar(caixa.autenticar, [])
+        sucesso, resultado = self.executar(menu.autenticar, [])
 
         self.assertFalse(sucesso)
         self.assertIn("Conta bloqueada", resultado)
 
     def test_cadastrar_pin(self):
         _, resultado = self.executar(
-            caixa.cadastrar_pin,
+            menu.cadastrar_pin,
             ["12", "5678", "5679", "5678", "5678"]
         )
 

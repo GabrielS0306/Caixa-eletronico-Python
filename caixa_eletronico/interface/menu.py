@@ -2,19 +2,23 @@ import time
 
 from getpass import getpass
 
-import cedulas
-import historico
-import relatorio
-import persistencia
+from caixa_eletronico.nucleo import cedulas
+from caixa_eletronico.interface import historico
+from caixa_eletronico.interface import relatorio
+from caixa_eletronico.armazenamento import persistencia
 
-from cedulas import CedulasIndisponiveisError
-from conta_bancaria import (
+from caixa_eletronico.nucleo.cedulas import CedulasIndisponiveisError
+from caixa_eletronico.nucleo.conta_bancaria import (
     SaldoInsuficienteError,
     ValorInvalidoError,
     validar_valor
 )
-from formatacao import formatar_moeda
-from seguranca import MAX_TENTATIVAS, PinInvalidoError, validar_formato_pin
+from caixa_eletronico.formatacao import formatar_moeda
+from caixa_eletronico.nucleo.seguranca import (
+    MAX_TENTATIVAS,
+    PinInvalidoError,
+    validar_formato_pin
+)
 
 MENSAGEM_BLOQUEIO = (
     f"Conta bloqueada após {MAX_TENTATIVAS} tentativas incorretas. "
@@ -169,7 +173,3 @@ def main():
 
         else:
             print("Opção inválida! Tente novamente.")
-
-
-if __name__ == "__main__":
-    main()

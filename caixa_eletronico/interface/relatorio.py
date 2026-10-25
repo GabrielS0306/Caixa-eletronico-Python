@@ -1,7 +1,7 @@
 from decimal import Decimal
 
-from conta_bancaria import TipoTransacao
-from formatacao import formatar_moeda
+from caixa_eletronico.nucleo.conta_bancaria import TipoTransacao
+from caixa_eletronico.formatacao import formatar_moeda
 
 
 def gerar_relatorio(transacoes, saldo_atual):

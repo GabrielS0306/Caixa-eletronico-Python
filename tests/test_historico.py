@@ -1,5 +1,5 @@
 import unittest
-import historico
+from caixa_eletronico.interface import historico
 
 from datetime import datetime
 from decimal import Decimal
@@ -7,7 +7,11 @@ from io import StringIO
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
-from conta_bancaria import ContaBancaria, TipoTransacao, Transacao
+from caixa_eletronico.nucleo.conta_bancaria import (
+    ContaBancaria,
+    TipoTransacao,
+    Transacao
+)
 
 class TestHistorico(unittest.TestCase):
     def mostrar(self, transacoes):
@@ -35,7 +39,7 @@ class TestHistorico(unittest.TestCase):
         conta = ContaBancaria()
 
         with patch(
-            "conta_bancaria.agora",
+            "caixa_eletronico.nucleo.conta_bancaria.agora",
             return_value=datetime(2026, 10, 25, 9, 5, 0)
         ):
             conta.depositar(10)

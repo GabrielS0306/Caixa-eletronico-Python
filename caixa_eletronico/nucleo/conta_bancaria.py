@@ -3,7 +3,11 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from enum import Enum
 
-from seguranca import MAX_TENTATIVAS, ContaBloqueadaError, Senha
+from caixa_eletronico.nucleo.seguranca import (
+    MAX_TENTATIVAS,
+    ContaBloqueadaError,
+    Senha
+)
 
 CENTAVO = Decimal("0.01")
 

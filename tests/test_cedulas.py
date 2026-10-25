@@ -2,9 +2,9 @@ import unittest
 
 from decimal import Decimal
 
-import cedulas
+from caixa_eletronico.nucleo import cedulas
 
-from cedulas import CEDULAS, CedulasIndisponiveisError
+from caixa_eletronico.nucleo.cedulas import CEDULAS, CedulasIndisponiveisError
 
 def menor_quantidade_de_notas(valor):
     # Força bruta (programação dinâmica) para conferir o algoritmo guloso

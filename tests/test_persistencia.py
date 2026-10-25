@@ -9,9 +9,9 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-import persistencia
+from caixa_eletronico.armazenamento import persistencia
 
-from conta_bancaria import ContaBancaria, TipoTransacao
+from caixa_eletronico.nucleo.conta_bancaria import ContaBancaria, TipoTransacao
 
 class TestPersistencia(unittest.TestCase):
     def setUp(self):
@@ -94,7 +94,7 @@ class TestPersistencia(unittest.TestCase):
         conta = ContaBancaria()
 
         with patch(
-            "conta_bancaria.agora",
+            "caixa_eletronico.nucleo.conta_bancaria.agora",
             return_value=datetime(2026, 10, 25, 14, 30, 5)
         ):
             conta.depositar(10)

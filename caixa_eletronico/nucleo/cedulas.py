@@ -1,4 +1,4 @@
-from formatacao import formatar_moeda
+from caixa_eletronico.formatacao import formatar_moeda
 
 # Para este conjunto de cédulas, escolher sempre a maior possível (algoritmo
 # guloso) já resulta no menor número de notas. Isso não vale para qualquer

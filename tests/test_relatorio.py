@@ -1,11 +1,11 @@
 import unittest
-import relatorio
+from caixa_eletronico.interface import relatorio
 
 from decimal import Decimal
 from io import StringIO
 from contextlib import redirect_stdout
 
-from conta_bancaria import ContaBancaria
+from caixa_eletronico.nucleo.conta_bancaria import ContaBancaria
 
 class TestRelatorio(unittest.TestCase):
     def test_gerar_relatorio(self):

@@ -4,13 +4,13 @@ from datetime import datetime
 from decimal import Decimal
 from unittest.mock import patch
 
-from conta_bancaria import (
+from caixa_eletronico.nucleo.conta_bancaria import (
     ContaBancaria,
     SaldoInsuficienteError,
     TipoTransacao,
     ValorInvalidoError
 )
-from seguranca import ContaBloqueadaError
+from caixa_eletronico.nucleo.seguranca import ContaBloqueadaError
 
 class TestDeposito(unittest.TestCase):
     def setUp(self):
@@ -122,7 +122,10 @@ class TestDataTransacao(unittest.TestCase):
         momento = datetime(2026, 10, 25, 14, 30, 5)
         conta = ContaBancaria()
 
-        with patch("conta_bancaria.agora", return_value=momento):
+        with patch(
+            "caixa_eletronico.nucleo.conta_bancaria.agora",
+            return_value=momento
+        ):
             conta.depositar(100)
             conta.sacar(40)
 

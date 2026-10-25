@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from conta_bancaria import (
+from caixa_eletronico.nucleo.conta_bancaria import (
     ContaBancaria,
     TipoTransacao,
     Transacao,
@@ -10,9 +10,10 @@ from conta_bancaria import (
     arredondar,
     para_decimal
 )
-from seguranca import Senha
+from caixa_eletronico.nucleo.seguranca import Senha
 
-ARQUIVO_DADOS = Path(__file__).with_name("dados.json")
+# Raiz do projeto: armazenamento/ -> caixa_eletronico/ -> raiz
+ARQUIVO_DADOS = Path(__file__).resolve().parents[2] / "dados.json"
 
 
 def converter_valor(valor):
