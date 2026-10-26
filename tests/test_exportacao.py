@@ -34,18 +34,25 @@ class TestExportarCsv(unittest.TestCase):
                 Decimal("80.50"),
                 Decimal("1419.50"),
                 None
+            ),
+            Transacao(
+                TipoTransacao.TRANSFERENCIA_ENVIADA,
+                Decimal("19.50"),
+                Decimal("1400.00"),
+                datetime(2026, 10, 25, 14, 45, 0),
+                "1002"
             )
         ]
 
     def exportar(self):
         return exportacao.exportar_csv(
-            self.transacoes, momento=datetime(2026, 10, 25, 15, 0, 0)
+            self.transacoes, "1001", momento=datetime(2026, 10, 25, 15, 0, 0)
         )
 
     def test_cria_pasta_e_nomeia_arquivo(self):
         caminho = self.exportar()
 
-        self.assertEqual(caminho, self.pasta / "extrato_2026-10-25_15-00-00.csv")
+        self.assertEqual(caminho, self.pasta / "extrato_1001_2026-10-25_15-00-00.csv")
         self.assertTrue(caminho.exists())
 
     def test_conteudo_no_formato_do_excel(self):
@@ -54,9 +61,10 @@ class TestExportarCsv(unittest.TestCase):
         linhas = caminho.read_text(encoding="utf-8-sig").splitlines()
 
         self.assertEqual(linhas, [
-            "Data;Tipo;Valor;Saldo após operação",
-            "25/10/2026 14:30:05;Depósito;1500,00;1500,00",
-            ";Saque;80,50;1419,50"
+            "Data;Tipo;Valor;Saldo após operação;Outra conta",
+            "25/10/2026 14:30:05;Depósito;1500,00;1500,00;",
+            ";Saque;80,50;1419,50;",
+            "25/10/2026 14:45:00;Transferência enviada;19,50;1400,00;1002"
         ])
 
     def test_arquivo_comeca_com_bom(self):
@@ -71,7 +79,9 @@ class TestExportarCsv(unittest.TestCase):
 
         linhas = caminho.read_text(encoding="utf-8-sig").splitlines()
 
-        self.assertEqual(linhas, ["Data;Tipo;Valor;Saldo após operação"])
+        self.assertEqual(
+            linhas, ["Data;Tipo;Valor;Saldo após operação;Outra conta"]
+        )
 
 if __name__ == "__main__":
     unittest.main()

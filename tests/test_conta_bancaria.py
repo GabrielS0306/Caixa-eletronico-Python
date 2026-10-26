@@ -8,6 +8,7 @@ from caixa_eletronico.nucleo.conta_bancaria import (
     ContaBancaria,
     SaldoInsuficienteError,
     TipoTransacao,
+    TransferenciaInvalidaError,
     ValorInvalidoError
 )
 from caixa_eletronico.nucleo.seguranca import ContaBloqueadaError
@@ -172,6 +173,66 @@ class TestPin(unittest.TestCase):
     def test_autenticar_sem_pin(self):
         with self.assertRaises(ValueError):
             ContaBancaria().autenticar("1234")
+
+class TestTransferencia(unittest.TestCase):
+    def setUp(self):
+        self.origem = ContaBancaria("Ana", saldo=100, numero="1001")
+        self.destino = ContaBancaria("Bruno", saldo=10, numero="1002")
+
+    def nada_mudou(self):
+        self.assertEqual(self.origem.saldo, Decimal("100.00"))
+        self.assertEqual(self.destino.saldo, Decimal("10.00"))
+        self.assertEqual(self.origem.transacoes, ())
+        self.assertEqual(self.destino.transacoes, ())
+
+    def test_transferencia_valida(self):
+        momento = datetime(2026, 10, 25, 16, 0, 0)
+
+        with patch(
+            "caixa_eletronico.nucleo.conta_bancaria.agora",
+            return_value=momento
+        ):
+            resultado = self.origem.transferir(self.destino, "30.25")
+
+        self.assertEqual(resultado, Decimal("69.75"))
+        self.assertEqual(self.destino.saldo, Decimal("40.25"))
+
+        enviada = self.origem.transacoes[0]
+        recebida = self.destino.transacoes[0]
+
+        self.assertEqual(enviada.tipo, TipoTransacao.TRANSFERENCIA_ENVIADA)
+        self.assertEqual(enviada.contraparte, "1002")
+        self.assertEqual(enviada.saldo, Decimal("69.75"))
+        self.assertEqual(recebida.tipo, TipoTransacao.TRANSFERENCIA_RECEBIDA)
+        self.assertEqual(recebida.contraparte, "1001")
+        self.assertEqual(recebida.saldo, Decimal("40.25"))
+        self.assertEqual(enviada.data, momento)
+        self.assertEqual(recebida.data, momento)
+
+    def test_transferir_todo_o_saldo(self):
+        self.origem.transferir(self.destino, 100)
+
+        self.assertEqual(self.origem.saldo, Decimal("0.00"))
+
+    def test_saldo_insuficiente_nao_altera_nenhuma_conta(self):
+        with self.assertRaises(SaldoInsuficienteError):
+            self.origem.transferir(self.destino, "100.01")
+
+        self.nada_mudou()
+
+    def test_valor_invalido_nao_altera_nenhuma_conta(self):
+        for valor in (0, -5, "abc", "1.001"):
+            with self.subTest(valor=valor):
+                with self.assertRaises(ValorInvalidoError):
+                    self.origem.transferir(self.destino, valor)
+
+        self.nada_mudou()
+
+    def test_para_a_propria_conta(self):
+        with self.assertRaises(TransferenciaInvalidaError):
+            self.origem.transferir(self.origem, 10)
+
+        self.nada_mudou()
 
 if __name__ == "__main__":
     unittest.main()

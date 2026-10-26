@@ -17,12 +17,18 @@ class ValorInvalidoError(ValueError):
 
 
 class SaldoInsuficienteError(Exception):
-    """Saque maior que o saldo disponível."""
+    """Saque ou transferência maior que o saldo disponível."""
+
+
+class TransferenciaInvalidaError(ValueError):
+    """Transferência para a própria conta."""
 
 
 class TipoTransacao(str, Enum):
     DEPOSITO = "Depósito"
     SAQUE = "Saque"
+    TRANSFERENCIA_ENVIADA = "Transferência enviada"
+    TRANSFERENCIA_RECEBIDA = "Transferência recebida"
 
 
 @dataclass(frozen=True)
@@ -32,6 +38,8 @@ class Transacao:
     saldo: Decimal
     # None em transações antigas, salvas antes de a data ser registrada
     data: datetime | None = None
+    # Número da outra conta, apenas em transferências
+    contraparte: str | None = None
 
 
 def agora():
@@ -78,13 +86,14 @@ def validar_valor(valor):
 class ContaBancaria:
     def __init__(
         self, titular="", saldo=0, transacoes=None,
-        senha=None, tentativas_falhas=0
+        senha=None, tentativas_falhas=0, numero=""
     ):
         saldo = arredondar(para_decimal(saldo))
 
         if saldo < 0:
             raise ValorInvalidoError("O saldo não pode ser negativo.")
 
+        self.numero = numero
         self.titular = titular
         self._saldo = saldo
         self._transacoes = list(transacoes or [])
@@ -156,5 +165,35 @@ class ContaBancaria:
 
         return self._saldo
 
-    def _registrar(self, tipo, valor):
-        self._transacoes.append(Transacao(tipo, valor, self._saldo, agora()))
+    def transferir(self, destino, valor):
+        valor = validar_valor(valor)
+
+        if destino is self or destino.numero == self.numero:
+            raise TransferenciaInvalidaError(
+                "Não é possível transferir para a própria conta."
+            )
+
+        if valor > self._saldo:
+            raise SaldoInsuficienteError("Saldo insuficiente!")
+
+        # Tudo foi validado antes: daqui em diante as duas contas mudam juntas
+        momento = agora()
+
+        self._saldo -= valor
+        self._registrar(
+            TipoTransacao.TRANSFERENCIA_ENVIADA, valor, momento, destino.numero
+        )
+
+        destino._saldo += valor
+        destino._registrar(
+            TipoTransacao.TRANSFERENCIA_RECEBIDA, valor, momento, self.numero
+        )
+
+        return self._saldo
+
+    def _registrar(self, tipo, valor, momento=None, contraparte=None):
+        self._transacoes.append(
+            Transacao(
+                tipo, valor, self._saldo, momento or agora(), contraparte
+            )
+        )

@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from caixa_eletronico.interface import menu
 
+from caixa_eletronico.nucleo.banco import Banco
 from caixa_eletronico.nucleo.conta_bancaria import ContaBancaria
 from caixa_eletronico.formatacao import formatar_moeda
 
@@ -72,13 +73,14 @@ class TestPin(unittest.TestCase):
     def setUp(self):
         # Evita gravar no dados.json real durante os testes
         patcher = patch(
-            "caixa_eletronico.interface.menu.persistencia.salvar_conta"
+            "caixa_eletronico.interface.menu.persistencia.salvar_banco"
         )
         self.salvar = patcher.start()
         self.addCleanup(patcher.stop)
 
-        self.conta = ContaBancaria()
+        self.conta = ContaBancaria(numero="1001")
         self.conta.definir_pin("1234")
+        self.banco = Banco([self.conta])
 
     def executar(self, funcao, pins):
         saida = StringIO()
@@ -87,18 +89,21 @@ class TestPin(unittest.TestCase):
             "caixa_eletronico.interface.menu.ler_pin", side_effect=pins
         ):
             with redirect_stdout(saida):
-                resultado = funcao(self.conta)
+                resultado = funcao()
 
         return resultado, saida.getvalue()
 
+    def autenticar(self):
+        return menu.autenticar(self.banco, self.conta)
+
     def test_autenticar_na_primeira(self):
-        sucesso, _ = self.executar(menu.autenticar, ["1234"])
+        sucesso, _ = self.executar(self.autenticar, ["1234"])
 
         self.assertTrue(sucesso)
 
     def test_autenticar_depois_de_errar(self):
         sucesso, resultado = self.executar(
-            menu.autenticar, ["0000", "1111", "1234"]
+            self.autenticar, ["0000", "1111", "1234"]
         )
 
         self.assertTrue(sucesso)
@@ -108,7 +113,7 @@ class TestPin(unittest.TestCase):
 
     def test_tres_erros_bloqueiam(self):
         sucesso, resultado = self.executar(
-            menu.autenticar, ["0000", "1111", "2222"]
+            self.autenticar, ["0000", "1111", "2222"]
         )
 
         self.assertFalse(sucesso)
@@ -120,20 +125,141 @@ class TestPin(unittest.TestCase):
         for _ in range(3):
             self.conta.autenticar("0000")
 
-        sucesso, resultado = self.executar(menu.autenticar, [])
+        sucesso, resultado = self.executar(self.autenticar, [])
 
         self.assertFalse(sucesso)
         self.assertIn("Conta bloqueada", resultado)
 
     def test_cadastrar_pin(self):
         _, resultado = self.executar(
-            menu.cadastrar_pin,
+            lambda: menu.cadastrar_pin(self.conta),
             ["12", "5678", "5679", "5678", "5678"]
         )
 
         self.assertIn("O PIN deve ter de 4 a 6 dígitos", resultado)
         self.assertIn("Os PINs não conferem", resultado)
         self.assertTrue(self.conta.autenticar("5678"))
+
+class TestContas(unittest.TestCase):
+    def setUp(self):
+        patcher = patch(
+            "caixa_eletronico.interface.menu.persistencia.salvar_banco"
+        )
+        self.salvar = patcher.start()
+        self.addCleanup(patcher.stop)
+
+        self.conta = ContaBancaria("Ana", saldo=100, numero="1001")
+        self.conta.definir_pin("1234")
+        self.destino = ContaBancaria("Bruno", numero="1002")
+        self.banco = Banco([self.conta, self.destino])
+
+    def executar(self, funcao, entradas=(), pins=()):
+        saida = StringIO()
+
+        with patch("builtins.input", side_effect=entradas), \
+                patch("caixa_eletronico.interface.menu.ler_pin", side_effect=pins):
+            with redirect_stdout(saida):
+                resultado = funcao(self.banco)
+
+        return resultado, saida.getvalue()
+
+    def test_abrir_conta(self):
+        conta, resultado = self.executar(
+            menu.abrir_conta, entradas=["", "  Carla  "], pins=["4321", "4321"]
+        )
+
+        self.assertEqual(conta.numero, "1003")
+        self.assertEqual(conta.titular, "Carla")
+        self.assertIs(self.banco.buscar("1003"), conta)
+        self.assertTrue(conta.autenticar("4321"))
+        self.assertIn("Informe o nome do titular.", resultado)
+        self.assertIn("O número da sua conta é 1003", resultado)
+        self.salvar.assert_called_once()
+
+    def test_acessar_conta_com_pin(self):
+        conta, _ = self.executar(
+            menu.acessar_conta, entradas=[" 1001 "], pins=["1234"]
+        )
+
+        self.assertIs(conta, self.conta)
+
+    def test_acessar_conta_inexistente(self):
+        conta, resultado = self.executar(menu.acessar_conta, entradas=["9999"])
+
+        self.assertIsNone(conta)
+        self.assertIn("Conta 9999 não encontrada.", resultado)
+
+    def test_acessar_conta_com_pin_errado(self):
+        conta, resultado = self.executar(
+            menu.acessar_conta,
+            entradas=["1001"],
+            pins=["0000", "1111", "2222"]
+        )
+
+        self.assertIsNone(conta)
+        self.assertIn("Conta bloqueada", resultado)
+
+    def test_conta_antiga_sem_pin_cadastra_pin_e_titular(self):
+        antiga = ContaBancaria(numero="1003")
+        self.banco = Banco([antiga])
+
+        conta, resultado = self.executar(
+            menu.acessar_conta,
+            entradas=["1003", "Gabriel"],
+            pins=["2468", "2468"]
+        )
+
+        self.assertIs(conta, antiga)
+        self.assertEqual(conta.titular, "Gabriel")
+        self.assertTrue(conta.autenticar("2468"))
+        self.assertIn("ainda não tem PIN", resultado)
+
+    def transferir(self, entradas):
+        return self.executar(
+            lambda banco: menu.realizar_transferencia(banco, self.conta),
+            entradas=entradas
+        )
+
+    def test_transferencia_confirmada(self):
+        sucesso, resultado = self.transferir(["1002", "40,50", "s"])
+
+        self.assertTrue(sucesso)
+        self.assertIn("para a conta 1002 (Bruno)?", resultado)
+        self.assertEqual(self.conta.saldo, Decimal("59.50"))
+        self.assertEqual(self.destino.saldo, Decimal("40.50"))
+
+    def test_transferencia_cancelada(self):
+        sucesso, resultado = self.transferir(["1002", "40", "n"])
+
+        self.assertFalse(sucesso)
+        self.assertIn("Transferência cancelada.", resultado)
+        self.assertEqual(self.conta.saldo, Decimal("100.00"))
+        self.assertEqual(self.destino.transacoes, ())
+
+    def test_transferencia_para_conta_inexistente(self):
+        sucesso, resultado = self.transferir(["9999"])
+
+        self.assertFalse(sucesso)
+        self.assertIn("não encontrada", resultado)
+
+    def test_transferencia_para_a_propria_conta(self):
+        sucesso, resultado = self.transferir(["1001"])
+
+        self.assertFalse(sucesso)
+        self.assertIn("própria conta", resultado)
+
+    def test_transferencia_com_saldo_insuficiente(self):
+        sucesso, resultado = self.transferir(["1002", "500", "s"])
+
+        self.assertFalse(sucesso)
+        self.assertIn("Saldo insuficiente!", resultado)
+        self.assertEqual(self.destino.saldo, Decimal("0.00"))
+
+    def test_transferencia_com_valor_invalido(self):
+        sucesso, resultado = self.transferir(["1002", "abc"])
+
+        self.assertFalse(sucesso)
+        self.assertIn("Entrada inválida", resultado)
 
 class TestObterData(unittest.TestCase):
     def obter(self, entradas):

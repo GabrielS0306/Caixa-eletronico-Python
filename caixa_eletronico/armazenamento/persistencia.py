@@ -6,6 +6,7 @@ from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 
+from caixa_eletronico.nucleo.banco import NUMERO_INICIAL, Banco
 from caixa_eletronico.nucleo.conta_bancaria import (
     ContaBancaria,
     TipoTransacao,
@@ -73,6 +74,16 @@ def converter_seguranca(dados):
     return Senha(salt, hash_pin), tentativas
 
 
+def converter_contraparte(contraparte):
+    if contraparte is None:
+        return None
+
+    if not (isinstance(contraparte, str) and contraparte.isdigit()):
+        raise ValueError(f"Conta de transferência inválida: {contraparte!r}")
+
+    return contraparte
+
+
 def conta_para_dados(conta):
     seguranca = None
 
@@ -84,6 +95,7 @@ def conta_para_dados(conta):
         }
 
     return {
+        "numero": conta.numero,
         "titular": conta.titular,
         "seguranca": seguranca,
         "saldo": str(conta.saldo),
@@ -92,7 +104,8 @@ def conta_para_dados(conta):
                 "tipo": item.tipo.value,
                 "valor": str(item.valor),
                 "saldo": str(item.saldo),
-                "data": item.data.isoformat() if item.data else None
+                "data": item.data.isoformat() if item.data else None,
+                "contraparte": item.contraparte
             }
             for item in conta.transacoes
         ]
@@ -103,10 +116,15 @@ def dados_para_conta(dados):
     if not isinstance(dados, dict):
         raise ValueError("Estrutura inválida.")
 
+    numero = dados.get("numero", "")
     titular = dados.get("titular", "")
     transacoes_dados = dados.get("transacoes")
 
-    if not isinstance(titular, str) or not isinstance(transacoes_dados, list):
+    if (
+        not isinstance(numero, str)
+        or not isinstance(titular, str)
+        or not isinstance(transacoes_dados, list)
+    ):
         raise ValueError("Estrutura inválida.")
 
     saldo = converter_valor(dados.get("saldo"))
@@ -130,18 +148,45 @@ def dados_para_conta(dados):
         valor = converter_valor(item.get("valor"))
         saldo_transacao = converter_valor(item.get("saldo"))
         data = converter_data(item.get("data"))
+        contraparte = converter_contraparte(item.get("contraparte"))
 
         if valor <= 0 or saldo_transacao < 0:
             raise ValueError("Valores de transação inválidos.")
 
-        transacoes.append(Transacao(tipo, valor, saldo_transacao, data))
+        transacoes.append(
+            Transacao(tipo, valor, saldo_transacao, data, contraparte)
+        )
 
     senha, tentativas = converter_seguranca(dados.get("seguranca"))
 
-    return ContaBancaria(titular, saldo, transacoes, senha, tentativas)
+    return ContaBancaria(
+        titular, saldo, transacoes, senha, tentativas, numero
+    )
 
 
-def salvar_conta(conta):
+def formato_antigo(dados):
+    # Antes de existirem várias contas, o arquivo guardava uma conta só
+    return isinstance(dados, dict) and "contas" not in dados
+
+
+def banco_para_dados(banco):
+    return {"contas": [conta_para_dados(conta) for conta in banco.contas]}
+
+
+def dados_para_banco(dados):
+    if formato_antigo(dados):
+        conta = dados_para_conta(dados)
+        conta.numero = str(NUMERO_INICIAL)
+
+        return Banco([conta])
+
+    if not isinstance(dados, dict) or not isinstance(dados["contas"], list):
+        raise ValueError("Estrutura inválida.")
+
+    return Banco([dados_para_conta(item) for item in dados["contas"]])
+
+
+def salvar_banco(banco):
     # Grava num arquivo temporário e só então substitui o dados.json. Se o
     # programa for interrompido no meio, o arquivo original continua intacto.
     temporario = None
@@ -158,7 +203,7 @@ def salvar_conta(conta):
             temporario = Path(arquivo.name)
 
             json.dump(
-                conta_para_dados(conta),
+                banco_para_dados(banco),
                 arquivo,
                 indent=4,
                 ensure_ascii=False
@@ -183,17 +228,28 @@ def salvar_conta(conta):
                 temporario.unlink(missing_ok=True)
 
 
-def carregar_conta():
+def carregar_banco():
     if not ARQUIVO_DADOS.exists():
-        return ContaBancaria()
+        return Banco()
 
     try:
         with open(ARQUIVO_DADOS, "r", encoding="utf-8") as arquivo:
             dados = json.load(arquivo)
 
-        return dados_para_conta(dados)
+        banco = dados_para_banco(dados)
 
     except (OSError, ValueError) as erro:
         print(f"Não foi possível carregar os dados: {erro}")
         print("Iniciando com valores padrão.")
-        return ContaBancaria()
+        return Banco()
+
+    if formato_antigo(dados):
+        conta = banco.contas[0]
+
+        print(
+            "Dados convertidos para o novo formato: sua conta agora é "
+            f"a de número {conta.numero}."
+        )
+        salvar_banco(banco)
+
+    return banco

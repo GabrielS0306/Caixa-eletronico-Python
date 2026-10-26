@@ -57,6 +57,19 @@ class TestHistorico(unittest.TestCase):
 
         self.assertIn("Data: não registrada", resultado)
 
+    def test_historico_mostra_conta_da_transferencia(self):
+        origem = ContaBancaria(saldo=100, numero="1001")
+        destino = ContaBancaria(numero="1002")
+        origem.transferir(destino, 25)
+
+        enviada = self.mostrar(origem.transacoes)
+        recebida = self.mostrar(destino.transacoes)
+
+        self.assertIn("Tipo: Transferência enviada", enviada)
+        self.assertIn("Para a conta: 1002", enviada)
+        self.assertIn("Tipo: Transferência recebida", recebida)
+        self.assertIn("Da conta: 1001", recebida)
+
     def test_historico_vazio(self):
         resultado = self.mostrar(())
 

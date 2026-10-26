@@ -49,5 +49,32 @@ class TestRelatorio(unittest.TestCase):
         self.assertIn("Quantidade de saques: 1", resultado)
         self.assertIn("Total de transações: 2", resultado)
 
+    def test_relatorio_com_transferencias(self):
+        conta = ContaBancaria(saldo=500, numero="1001")
+        outra = ContaBancaria(saldo=500, numero="1002")
+
+        conta.transferir(outra, 120)
+        conta.transferir(outra, 30)
+        outra.transferir(conta, 45)
+
+        resumo = relatorio.gerar_relatorio(conta.transacoes, conta.saldo)
+
+        self.assertEqual(resumo["total_enviado"], Decimal("150.00"))
+        self.assertEqual(resumo["quantidade_enviadas"], 2)
+        self.assertEqual(resumo["total_recebido"], Decimal("45.00"))
+        self.assertEqual(resumo["quantidade_recebidas"], 1)
+        self.assertEqual(resumo["total_sacado"], Decimal("0.00"))
+
+        saida = StringIO()
+
+        with redirect_stdout(saida):
+            relatorio.mostrar_relatorio(conta.transacoes, conta.saldo)
+
+        resultado = saida.getvalue()
+
+        self.assertIn("Total enviado em transferências: R$ 150,00", resultado)
+        self.assertIn("Total recebido em transferências: R$ 45,00", resultado)
+        self.assertIn("Quantidade de transferências enviadas: 2", resultado)
+
 if __name__ == "__main__":
     unittest.main()

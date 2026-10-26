@@ -12,9 +12,11 @@ from caixa_eletronico.interface import relatorio
 from caixa_eletronico.armazenamento import exportacao
 from caixa_eletronico.armazenamento import persistencia
 
+from caixa_eletronico.nucleo.banco import ContaNaoEncontradaError
 from caixa_eletronico.nucleo.cedulas import CedulasIndisponiveisError
 from caixa_eletronico.nucleo.conta_bancaria import (
     SaldoInsuficienteError,
+    TransferenciaInvalidaError,
     ValorInvalidoError,
     validar_valor
 )
@@ -47,7 +49,7 @@ def ler_pin(mensagem):
     return input(mensagem).strip()
 
 
-def cadastrar_pin(conta):
+def ler_novo_pin():
     while True:
         pin = ler_pin("Novo PIN (4 a 6 dígitos): ")
 
@@ -62,16 +64,19 @@ def cadastrar_pin(conta):
             print("Os PINs não conferem. Tente novamente.")
             continue
 
-        conta.definir_pin(pin)
-        print("PIN cadastrado com sucesso!")
-        return
+        return pin
 
 
-def tentar_pin(conta, mensagem="Digite seu PIN: "):
+def cadastrar_pin(conta):
+    conta.definir_pin(ler_novo_pin())
+    print("PIN cadastrado com sucesso!")
+
+
+def tentar_pin(banco, conta, mensagem="Digite seu PIN: "):
     acertou = conta.autenticar(ler_pin(mensagem))
 
     # Salva a cada tentativa para o bloqueio valer mesmo se o programa for fechado
-    persistencia.salvar_conta(conta)
+    persistencia.salvar_banco(banco)
 
     if acertou:
         return True
@@ -87,16 +92,65 @@ def tentar_pin(conta, mensagem="Digite seu PIN: "):
     return False
 
 
-def autenticar(conta):
+def autenticar(banco, conta):
     if conta.bloqueada:
         print(MENSAGEM_BLOQUEIO)
         return False
 
     while not conta.bloqueada:
-        if tentar_pin(conta):
+        if tentar_pin(banco, conta):
             return True
 
     return False
+
+
+def obter_titular():
+    while True:
+        titular = input("Nome do titular: ").strip()
+
+        if titular:
+            return titular
+
+        print("Informe o nome do titular.")
+
+
+def abrir_conta(banco):
+    titular = obter_titular()
+    conta = banco.abrir_conta(titular, ler_novo_pin())
+
+    persistencia.salvar_banco(banco)
+
+    print(f"Conta aberta com sucesso! O número da sua conta é {conta.numero}.")
+    print("Anote esse número: ele será pedido para acessar a conta.")
+
+    return conta
+
+
+def acessar_conta(banco):
+    numero = input("Número da conta: ")
+
+    try:
+        conta = banco.buscar(numero)
+
+    except ContaNaoEncontradaError as erro:
+        print(erro)
+        return None
+
+    # Conta convertida do formato antigo, de antes de existir PIN ou titular
+    if not conta.possui_pin:
+        print("Esta conta ainda não tem PIN. Crie um para protegê-la.")
+
+        if not conta.titular:
+            conta.titular = obter_titular()
+
+        cadastrar_pin(conta)
+        persistencia.salvar_banco(banco)
+        return conta
+
+    if autenticar(banco, conta):
+        return conta
+
+    return None
 
 
 def obter_valor(mensagem):
@@ -126,6 +180,45 @@ def realizar_saque(conta, valor):
     for cedula, quantidade in notas.items():
         print(f"  {quantidade} x {formatar_moeda(cedula)}")
 
+    return True
+
+
+def realizar_transferencia(banco, conta):
+    numero = input("Número da conta de destino: ")
+
+    try:
+        destino = banco.buscar(numero)
+
+    except ContaNaoEncontradaError as erro:
+        print(erro)
+        return False
+
+    if destino is conta:
+        print("Não é possível transferir para a própria conta.")
+        return False
+
+    valor = obter_valor("Valor da transferência: R$ ")
+
+    if valor is None:
+        return False
+
+    print(
+        f"Transferir {formatar_moeda(valor)} para a conta "
+        f"{destino.numero} ({destino.titular or 'sem nome'})?"
+    )
+
+    if input("Confirma? (s/n): ").strip().lower() != "s":
+        print("Transferência cancelada.")
+        return False
+
+    try:
+        conta.transferir(destino, valor)
+
+    except (SaldoInsuficienteError, TransferenciaInvalidaError) as erro:
+        print(erro)
+        return False
+
+    print("Transferência realizada com sucesso!")
     return True
 
 
@@ -164,15 +257,7 @@ def emitir_extrato(conta):
     historico.mostrar_historico(transacoes, titulo="EXTRATO")
 
     resumo = relatorio.gerar_relatorio(transacoes, conta.saldo)
-
-    print(
-        "Total depositado no período: "
-        f"{formatar_moeda(resumo['total_depositado'])}"
-    )
-    print(
-        "Total sacado no período: "
-        f"{formatar_moeda(resumo['total_sacado'])}"
-    )
+    relatorio.mostrar_totais(resumo, sufixo=" no período")
 
     resposta = input("Exportar para CSV? (s/n): ").strip().lower()
 
@@ -180,7 +265,7 @@ def emitir_extrato(conta):
         return
 
     try:
-        caminho = exportacao.exportar_csv(transacoes)
+        caminho = exportacao.exportar_csv(transacoes, conta.numero)
 
     except OSError as erro:
         print(f"Erro ao exportar o extrato: {erro}")
@@ -189,33 +274,18 @@ def emitir_extrato(conta):
         print(f"Extrato salvo em: {caminho}")
 
 
-def main():
-    conta = persistencia.carregar_conta()
-
-    if not terminal_esconde_pin():
-        print(
-            "Aviso: neste terminal o PIN ficará visível ao digitar. "
-            "Para escondê-lo, execute fora do VS Code."
-        )
-
-    if not conta.possui_pin:
-        print("Nenhum PIN cadastrado. Crie um PIN para proteger sua conta.")
-        cadastrar_pin(conta)
-        persistencia.salvar_conta(conta)
-
-    elif not autenticar(conta):
-        return
-
+def menu_conta(banco, conta):
     while True:
-        print("\n===== CAIXA ELETRÔNICO =====")
+        print(f"\n===== CONTA {conta.numero} - {conta.titular} =====")
         print("1 - Depósito")
         print("2 - Saque")
-        print("3 - Consultar saldo")
-        print("4 - Histórico de transações")
-        print("5 - Relatório da conta")
-        print("6 - Alterar PIN")
-        print("7 - Extrato por período")
-        print("0 - Sair")
+        print("3 - Transferência")
+        print("4 - Consultar saldo")
+        print("5 - Histórico de transações")
+        print("6 - Extrato por período")
+        print("7 - Relatório da conta")
+        print("8 - Alterar PIN")
+        print("0 - Sair da conta")
 
         opcao = input("Escolha uma opção: ").strip()
 
@@ -225,7 +295,7 @@ def main():
             if valor is not None:
                 conta.depositar(valor)
                 print("Depósito realizado com sucesso!")
-                persistencia.salvar_conta(conta)
+                persistencia.salvar_banco(banco)
 
         elif opcao == "2":
             valor = obter_valor(
@@ -234,27 +304,65 @@ def main():
             )
 
             if valor is not None and realizar_saque(conta, valor):
-                persistencia.salvar_conta(conta)
+                persistencia.salvar_banco(banco)
 
         elif opcao == "3":
-            print(f"Saldo disponível: {formatar_moeda(conta.saldo)}")
+            if realizar_transferencia(banco, conta):
+                persistencia.salvar_banco(banco)
 
         elif opcao == "4":
-            historico.mostrar_historico(conta.transacoes)
+            print(f"Saldo disponível: {formatar_moeda(conta.saldo)}")
 
         elif opcao == "5":
-            relatorio.mostrar_relatorio(conta.transacoes, conta.saldo)
+            historico.mostrar_historico(conta.transacoes)
 
         elif opcao == "6":
-            if tentar_pin(conta, "PIN atual: "):
-                cadastrar_pin(conta)
-                persistencia.salvar_conta(conta)
-
-            elif conta.bloqueada:
-                break
+            emitir_extrato(conta)
 
         elif opcao == "7":
-            emitir_extrato(conta)
+            relatorio.mostrar_relatorio(conta.transacoes, conta.saldo)
+
+        elif opcao == "8":
+            if tentar_pin(banco, conta, "PIN atual: "):
+                cadastrar_pin(conta)
+                persistencia.salvar_banco(banco)
+
+            elif conta.bloqueada:
+                return
+
+        elif opcao == "0":
+            print("Sessão encerrada.")
+            return
+
+        else:
+            print("Opção inválida! Tente novamente.")
+
+
+def main():
+    banco = persistencia.carregar_banco()
+
+    if not terminal_esconde_pin():
+        print(
+            "Aviso: neste terminal o PIN ficará visível ao digitar. "
+            "Para escondê-lo, execute fora do VS Code."
+        )
+
+    while True:
+        print("\n===== CAIXA ELETRÔNICO =====")
+        print("1 - Acessar conta")
+        print("2 - Abrir nova conta")
+        print("0 - Sair")
+
+        opcao = input("Escolha uma opção: ").strip()
+
+        if opcao == "1":
+            conta = acessar_conta(banco)
+
+            if conta is not None:
+                menu_conta(banco, conta)
+
+        elif opcao == "2":
+            menu_conta(banco, abrir_conta(banco))
 
         elif opcao == "0":
             print("Saindo do caixa eletrônico...")
