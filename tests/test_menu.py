@@ -183,6 +183,18 @@ class TestContas(unittest.TestCase):
 
         self.assertIs(conta, self.conta)
 
+    def test_conta_com_pin_sem_titular_pede_o_nome(self):
+        self.conta.titular = ""
+
+        conta, resultado = self.executar(
+            menu.acessar_conta, entradas=["1001", "Ana Maria"], pins=["1234"]
+        )
+
+        self.assertIs(conta, self.conta)
+        self.assertEqual(conta.titular, "Ana Maria")
+        self.assertIn("ainda não tem o nome do titular", resultado)
+        self.salvar.assert_called()
+
     def test_acessar_conta_inexistente(self):
         conta, resultado = self.executar(menu.acessar_conta, entradas=["9999"])
 

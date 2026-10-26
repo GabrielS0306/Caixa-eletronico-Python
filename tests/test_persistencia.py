@@ -1,18 +1,26 @@
 import json
+import sqlite3
 import unittest
 import tempfile
 
-from datetime import datetime
+from contextlib import closing, redirect_stdout
 from decimal import Decimal
 from io import StringIO
-from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
+from caixa_eletronico.armazenamento import formato_json
 from caixa_eletronico.armazenamento import persistencia
 
+from caixa_eletronico.armazenamento.persistencia import (
+    ArmazenamentoIndisponivelError
+)
 from caixa_eletronico.nucleo.banco import Banco
-from caixa_eletronico.nucleo.conta_bancaria import ContaBancaria, TipoTransacao
+from caixa_eletronico.nucleo.conta_bancaria import (
+    ContaBancaria,
+    TipoTransacao,
+    Transacao
+)
 
 def nova_conta(numero="1001", **dados):
     return ContaBancaria(numero=numero, **dados)
@@ -22,38 +30,54 @@ class TestPersistencia(unittest.TestCase):
         self.diretorio = tempfile.TemporaryDirectory()
         self.addCleanup(self.diretorio.cleanup)
 
-        self.arquivo = Path(self.diretorio.name) / "dados.json"
+        self.pasta = Path(self.diretorio.name)
+        self.arquivo_banco = self.pasta / "banco.db"
+        self.arquivo_json = self.pasta / "dados.json"
 
-        self.patch_arquivo = patch.object(
-            persistencia, "ARQUIVO_DADOS", self.arquivo
-        )
-        self.patch_arquivo.start()
-        self.addCleanup(self.patch_arquivo.stop)
-
-    def escrever_json(self, dados):
-        self.arquivo.write_text(json.dumps(dados), encoding="utf-8")
-
-    def ler_json(self):
-        return json.loads(self.arquivo.read_text(encoding="utf-8"))
+        for nome, caminho in (
+            ("ARQUIVO_BANCO", self.arquivo_banco),
+            ("ARQUIVO_JSON", self.arquivo_json)
+        ):
+            patcher = patch.object(persistencia, nome, caminho)
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def arquivos_na_pasta(self):
-        return sorted(p.name for p in Path(self.diretorio.name).iterdir())
+        return sorted(p.name for p in self.pasta.iterdir())
+
+    def consultar(self, sql):
+        with closing(sqlite3.connect(self.arquivo_banco)) as conexao:
+            return conexao.execute(sql).fetchall()
 
     def salvar(self, *contas):
         return persistencia.salvar_banco(Banco(contas))
 
     def carregar(self):
-        with redirect_stdout(StringIO()):
-            return persistencia.carregar_banco()
+        saida = StringIO()
+
+        with redirect_stdout(saida):
+            banco = persistencia.carregar_banco()
+
+        return banco, saida.getvalue()
 
     def carregar_unica_conta(self):
-        banco = self.carregar()
+        banco, _ = self.carregar()
 
         self.assertEqual(len(banco.contas), 1)
         return banco.contas[0]
 
+    # --- SQLite ---
+
+    def test_sem_arquivos_comeca_vazio(self):
+        banco, saida = self.carregar()
+
+        self.assertEqual(banco.contas, ())
+        self.assertEqual(saida, "")
+
     def test_salvar_e_carregar_conta(self):
         conta = nova_conta(titular="Gabriel")
+        conta.definir_pin("1234")
+        conta.autenticar("0000")
         conta.depositar(200)
         conta.sacar("50.10")
 
@@ -65,196 +89,63 @@ class TestPersistencia(unittest.TestCase):
         self.assertEqual(carregada.titular, "Gabriel")
         self.assertEqual(carregada.saldo, Decimal("149.90"))
         self.assertEqual(carregada.transacoes, conta.transacoes)
+        self.assertEqual(carregada.tentativas_falhas, 1)
+        self.assertTrue(carregada.autenticar("1234"))
 
-    def test_salvar_e_carregar_varias_contas_com_transferencia(self):
+    def test_varias_contas_com_transferencia(self):
         origem = nova_conta("1001", titular="Ana", saldo=100)
         destino = nova_conta("1002", titular="Bruno")
         origem.transferir(destino, 30)
 
         self.salvar(origem, destino)
 
-        banco = self.carregar()
+        banco, _ = self.carregar()
 
         self.assertEqual(banco.buscar("1001").saldo, Decimal("70.00"))
-        self.assertEqual(banco.buscar("1002").saldo, Decimal("30.00"))
-        self.assertEqual(
-            banco.buscar("1002").transacoes[0].contraparte, "1001"
-        )
-        self.assertEqual(banco.buscar("1001").transacoes, origem.transacoes)
+        self.assertEqual(banco.buscar("1002").transacoes, destino.transacoes)
 
-    def test_valores_salvos_como_texto(self):
+    def test_contas_em_ordem_numerica(self):
+        self.salvar(nova_conta("1010"), nova_conta("1002"), nova_conta("999"))
+
+        banco, _ = self.carregar()
+
+        self.assertEqual([c.numero for c in banco.contas], ["999", "1002", "1010"])
+
+    def test_valores_guardados_em_centavos(self):
         conta = nova_conta()
         conta.depositar("10.50")
 
         self.salvar(conta)
 
-        dados = self.ler_json()["contas"][0]
-
-        self.assertEqual(dados["saldo"], "10.50")
-        self.assertEqual(dados["transacoes"][0]["valor"], "10.50")
-
-    def test_arquivo_inexistente(self):
-        self.assertEqual(self.carregar().contas, ())
-
-    def test_arquivo_json_invalido(self):
-        self.arquivo.write_text(
-            "{ conteúdo inválido }",
-            encoding="utf-8"
+        self.assertEqual(
+            self.consultar("SELECT saldo_centavos FROM contas"), [(1050,)]
+        )
+        self.assertEqual(
+            self.consultar("SELECT valor_centavos FROM transacoes"), [(1050,)]
         )
 
-        self.assertEqual(self.carregar().contas, ())
+    def test_salvar_de_novo_so_insere_transacoes_novas(self):
+        conta = nova_conta(saldo=100)
+        banco = Banco([conta])
 
-    def test_carrega_formato_antigo_com_float(self):
-        self.escrever_json({
-            "saldo": 1170.0,
-            "transacoes": [
-                {"tipo": "Depósito", "valor": 1250.0, "saldo": 1250.0},
-                {"tipo": "Saque", "valor": 80.0, "saldo": 1170.0}
-            ]
-        })
+        conta.depositar(10)
+        persistencia.salvar_banco(banco)
+        conta.sacar(20)
+        persistencia.salvar_banco(banco)
+        persistencia.salvar_banco(banco)
 
-        conta = self.carregar_unica_conta()
+        self.assertEqual(
+            self.consultar("SELECT COUNT(*) FROM transacoes"), [(2,)]
+        )
+        self.assertEqual(self.carregar_unica_conta().saldo, Decimal("90.00"))
 
-        self.assertEqual(conta.numero, "1001")
-        self.assertEqual(conta.titular, "")
-        self.assertEqual(conta.saldo, Decimal("1170.00"))
-        self.assertEqual(conta.transacoes[1].tipo, TipoTransacao.SAQUE)
-        self.assertIsNone(conta.transacoes[1].data)
-
-    def test_formato_antigo_e_convertido_e_regravado(self):
-        conta = nova_conta(saldo=50)
-        conta.definir_pin("1234")
-
-        # Grava como o programa gravava antes: uma conta só, sem "numero"
-        dados_antigos = persistencia.conta_para_dados(conta)
-        del dados_antigos["numero"]
-        self.escrever_json(dados_antigos)
-
-        saida = StringIO()
-
-        with redirect_stdout(saida):
-            banco = persistencia.carregar_banco()
-
-        self.assertIn("conta agora é a de número 1001", saida.getvalue())
-        self.assertTrue(banco.buscar("1001").autenticar("1234"))
-        self.assertEqual(self.ler_json()["contas"][0]["numero"], "1001")
-
-        # Na segunda vez o arquivo já está no formato novo
-        with redirect_stdout(StringIO()) as saida:
-            persistencia.carregar_banco()
-
-        self.assertEqual(saida.getvalue(), "")
-
-    def test_data_salva_em_formato_iso(self):
+    def test_pin_nao_fica_no_banco(self):
         conta = nova_conta()
-
-        with patch(
-            "caixa_eletronico.nucleo.conta_bancaria.agora",
-            return_value=datetime(2026, 10, 25, 14, 30, 5)
-        ):
-            conta.depositar(10)
+        conta.definir_pin("1234")
 
         self.salvar(conta)
 
-        transacao = self.ler_json()["contas"][0]["transacoes"][0]
-
-        self.assertEqual(transacao["data"], "2026-10-25T14:30:05")
-
-    def test_data_invalida(self):
-        dados = {
-            "saldo": "10",
-            "transacoes": [
-                {
-                    "tipo": "Depósito",
-                    "valor": "10",
-                    "saldo": "10",
-                    "data": "ontem"
-                }
-            ]
-        }
-
-        with self.assertRaises(ValueError):
-            persistencia.dados_para_conta(dados)
-
-    def test_saldo_negativo(self):
-        with self.assertRaises(ValueError):
-            persistencia.dados_para_conta({"saldo": "-100", "transacoes": []})
-
-    def test_saldo_infinito(self):
-        with self.assertRaises(ValueError):
-            persistencia.dados_para_conta(
-                {"saldo": float("inf"), "transacoes": []}
-            )
-
-    def test_saldo_booleano(self):
-        with self.assertRaises(ValueError):
-            persistencia.dados_para_conta({"saldo": True, "transacoes": []})
-
-    def test_transacao_invalida(self):
-        dados = {
-            "saldo": "100",
-            "transacoes": [
-                {"tipo": "Transferência", "valor": "50", "saldo": "100"}
-            ]
-        }
-
-        with self.assertRaises(ValueError):
-            persistencia.dados_para_conta(dados)
-
-    def test_valor_negativo_na_transacao(self):
-        dados = {
-            "saldo": "100",
-            "transacoes": [
-                {"tipo": "Depósito", "valor": "-50", "saldo": "100"}
-            ]
-        }
-
-        with self.assertRaises(ValueError):
-            persistencia.dados_para_conta(dados)
-
-    def test_contraparte_invalida(self):
-        for contraparte in (1002, "abc", ""):
-            with self.subTest(contraparte=contraparte):
-                with self.assertRaises(ValueError):
-                    persistencia.dados_para_conta({
-                        "saldo": "10",
-                        "transacoes": [{
-                            "tipo": "Transferência recebida",
-                            "valor": "10",
-                            "saldo": "10",
-                            "contraparte": contraparte
-                        }]
-                    })
-
-    def test_contas_invalidas(self):
-        conta = persistencia.conta_para_dados(nova_conta("1001"))
-        sem_numero = dict(conta, numero="")
-
-        for dados in (
-            {"contas": "abc"},
-            {"contas": [conta, conta]},
-            {"contas": [sem_numero]},
-            []
-        ):
-            with self.subTest(dados=dados):
-                with self.assertRaises(ValueError):
-                    persistencia.dados_para_banco(dados)
-
-    def test_salvar_e_carregar_pin(self):
-        conta = nova_conta()
-        conta.definir_pin("1234")
-        conta.autenticar("0000")
-
-        self.salvar(conta)
-
-        carregada = self.carregar_unica_conta()
-
-        self.assertTrue(carregada.autenticar("1234"))
-
-        seguranca = self.ler_json()["contas"][0]["seguranca"]
-
-        self.assertEqual(seguranca["tentativas_falhas"], 1)
-        self.assertNotIn("1234", self.arquivo.read_text(encoding="utf-8"))
+        self.assertNotIn(b"1234", self.arquivo_banco.read_bytes())
 
     def test_bloqueio_continua_apos_carregar(self):
         conta = nova_conta()
@@ -267,89 +158,199 @@ class TestPersistencia(unittest.TestCase):
 
         self.assertTrue(self.carregar_unica_conta().bloqueada)
 
-    def test_formato_antigo_sem_pin(self):
-        self.escrever_json({"saldo": "10", "transacoes": []})
-
-        self.assertFalse(self.carregar_unica_conta().possui_pin)
-
-    def test_seguranca_invalida(self):
-        for seguranca in (
-            "abc",
-            {"salt": "zz", "hash": "00"},
-            {"salt": "", "hash": "00"},
-            {"salt": "00", "hash": "00", "tentativas_falhas": -1},
-            {"salt": "00", "hash": "00", "tentativas_falhas": True}
-        ):
-            with self.subTest(seguranca=seguranca):
-                with self.assertRaises(ValueError):
-                    persistencia.dados_para_conta({
-                        "saldo": "10",
-                        "transacoes": [],
-                        "seguranca": seguranca
-                    })
-
-    def salvar_original_e_alterar(self):
+    def test_falha_na_gravacao_nao_salva_nada(self):
         conta = nova_conta(saldo=100)
         banco = Banco([conta])
         persistencia.salvar_banco(banco)
 
-        original = self.arquivo.read_text(encoding="utf-8")
         conta.depositar(50)
+        # Transação inválida: o CHECK do banco recusa, e o depósito também
+        # deve ser desfeito, porque tudo é gravado numa única transação
+        conta._transacoes.append(
+            Transacao(TipoTransacao.SAQUE, Decimal("-1"), Decimal("0"))
+        )
 
-        return banco, original
-
-    def test_salvar_nao_deixa_arquivo_temporario(self):
-        self.salvar(nova_conta(saldo=10))
-        self.salvar(nova_conta(saldo=20))
-
-        self.assertEqual(self.arquivos_na_pasta(), ["dados.json"])
-        self.assertEqual(self.carregar_unica_conta().saldo, Decimal("20.00"))
-
-    def test_erro_no_meio_da_gravacao_preserva_original(self):
-        banco, original = self.salvar_original_e_alterar()
-
-        def gravar_pela_metade(dados, arquivo, **opcoes):
-            arquivo.write('{"contas": [{"saldo": "15')
-            raise OSError("disco cheio")
-
-        with patch("json.dump", side_effect=gravar_pela_metade):
-            with redirect_stdout(StringIO()) as saida:
-                sucesso = persistencia.salvar_banco(banco)
+        with redirect_stdout(StringIO()) as saida:
+            sucesso = persistencia.salvar_banco(banco)
 
         self.assertFalse(sucesso)
-        self.assertIn("disco cheio", saida.getvalue())
-        self.assertEqual(self.arquivo.read_text(encoding="utf-8"), original)
-        self.assertEqual(self.arquivos_na_pasta(), ["dados.json"])
+        self.assertIn("Erro ao salvar os dados", saida.getvalue())
+        self.assertEqual(
+            self.consultar("SELECT saldo_centavos FROM contas"), [(10000,)]
+        )
+        self.assertEqual(
+            self.consultar("SELECT COUNT(*) FROM transacoes"), [(0,)]
+        )
 
-    def test_ctrl_c_no_meio_da_gravacao_preserva_original(self):
-        banco, original = self.salvar_original_e_alterar()
+    def test_ctrl_c_no_meio_da_gravacao_nao_salva_nada(self):
+        primeira = nova_conta("1001", saldo=100)
+        segunda = nova_conta("1002", saldo=200)
+        banco = Banco([primeira, segunda])
+        persistencia.salvar_banco(banco)
 
-        def interromper(dados, arquivo, **opcoes):
-            arquivo.write('{"contas": [{"saldo": "15')
-            raise KeyboardInterrupt
+        primeira.depositar(50)
+        segunda.depositar(50)
 
-        with patch("json.dump", side_effect=interromper):
+        conversoes = []
+
+        def interromper_na_segunda_conta(valor):
+            conversoes.append(valor)
+
+            if len(conversoes) > 2:
+                raise KeyboardInterrupt
+
+            return int(valor * 100)
+
+        with patch.object(
+            persistencia, "para_centavos",
+            side_effect=interromper_na_segunda_conta
+        ):
             with self.assertRaises(KeyboardInterrupt):
                 persistencia.salvar_banco(banco)
 
-        self.assertEqual(self.arquivo.read_text(encoding="utf-8"), original)
-        self.assertEqual(self.arquivos_na_pasta(), ["dados.json"])
+        self.assertEqual(
+            self.consultar("SELECT saldo_centavos FROM contas ORDER BY numero"),
+            [(10000,), (20000,)]
+        )
 
-    def test_falha_na_troca_preserva_original(self):
-        banco, original = self.salvar_original_e_alterar()
+    # --- banco.db corrompido ou inacessível ---
 
-        with patch("os.replace", side_effect=PermissionError("em uso")):
-            with redirect_stdout(StringIO()):
-                sucesso = persistencia.salvar_banco(banco)
+    def test_banco_corrompido_e_guardado(self):
+        self.arquivo_banco.write_bytes(b"isto nao e um banco SQLite " * 50)
 
-        self.assertFalse(sucesso)
-        self.assertEqual(self.arquivo.read_text(encoding="utf-8"), original)
-        self.assertEqual(self.arquivos_na_pasta(), ["dados.json"])
+        banco, saida = self.carregar()
 
-    def test_dados_invalidos_iniciam_banco_vazio(self):
+        self.assertEqual(banco.contas, ())
+        self.assertIn("banco.db.corrompido-", saida)
+
+        arquivos = self.arquivos_na_pasta()
+
+        self.assertNotIn("banco.db", arquivos)
+        self.assertEqual(len(arquivos), 1)
+        self.assertTrue(arquivos[0].startswith("banco.db.corrompido-"))
+
+    def test_banco_com_dados_invalidos_e_guardado(self):
+        self.salvar(nova_conta())
+
+        with closing(sqlite3.connect(self.arquivo_banco)) as conexao:
+            with conexao:
+                conexao.execute(
+                    "INSERT INTO transacoes (numero_conta, tipo, "
+                    "valor_centavos, saldo_centavos, data) "
+                    "VALUES ('1001', 'Saque', 100, 0, 'ontem')"
+                )
+
+        banco, saida = self.carregar()
+
+        self.assertEqual(banco.contas, ())
+        self.assertIn("Data inválida", saida)
+
+    def test_banco_inacessivel_nao_comeca_vazio(self):
+        self.salvar(nova_conta())
+
+        with patch.object(
+            persistencia, "conectar",
+            side_effect=sqlite3.OperationalError("database is locked")
+        ):
+            with self.assertRaises(ArmazenamentoIndisponivelError):
+                persistencia.carregar_banco()
+
+        self.assertEqual(self.arquivos_na_pasta(), ["banco.db"])
+
+    def test_sem_copia_do_corrompido_nao_continua(self):
+        self.arquivo_banco.write_bytes(b"lixo " * 200)
+
+        with patch.object(Path, "replace", side_effect=PermissionError("em uso")):
+            with self.assertRaises(ArmazenamentoIndisponivelError):
+                persistencia.carregar_banco()
+
+        self.assertEqual(self.arquivos_na_pasta(), ["banco.db"])
+
+    # --- importação do dados.json ---
+
+    def escrever_json(self, dados):
+        self.arquivo_json.write_text(json.dumps(dados), encoding="utf-8")
+
+    def test_importa_json_atual(self):
+        origem = nova_conta("1001", titular="Ana", saldo=100)
+        origem.definir_pin("1234")
+        destino = nova_conta("1002", titular="Bruno")
+        origem.transferir(destino, 30)
+
+        self.escrever_json(formato_json.banco_para_dados(Banco([origem, destino])))
+
+        banco, saida = self.carregar()
+
+        self.assertIn("Dados importados de dados.json", saida)
+        self.assertTrue(banco.buscar("1001").autenticar("1234"))
+        self.assertEqual(banco.buscar("1002").transacoes, destino.transacoes)
+        self.assertEqual(
+            self.arquivos_na_pasta(), ["banco.db", "dados.json.migrado"]
+        )
+
+        # A partir daí os dados vêm do SQLite, sem nova importação
+        banco, saida = self.carregar()
+
+        self.assertEqual(saida, "")
+        self.assertEqual(banco.buscar("1001").saldo, Decimal("70.00"))
+
+    def test_importa_json_do_formato_antigo(self):
+        self.escrever_json({
+            "saldo": 1170.0,
+            "transacoes": [
+                {"tipo": "Depósito", "valor": 1250.0, "saldo": 1250.0},
+                {"tipo": "Saque", "valor": 80.0, "saldo": 1170.0}
+            ]
+        })
+
+        conta = self.carregar_unica_conta()
+
+        self.assertEqual(conta.numero, "1001")
+        self.assertEqual(conta.saldo, Decimal("1170.00"))
+        self.assertEqual(len(conta.transacoes), 2)
+
+    def test_json_corrompido_e_guardado(self):
+        self.arquivo_json.write_text("{ conteúdo inválido }", encoding="utf-8")
+
+        banco, saida = self.carregar()
+
+        self.assertEqual(banco.contas, ())
+        self.assertIn("dados.json.corrompido-", saida)
+
+        arquivos = self.arquivos_na_pasta()
+
+        self.assertEqual(len(arquivos), 1)
+        self.assertTrue(arquivos[0].startswith("dados.json.corrompido-"))
+
+    def test_json_com_dados_invalidos_e_guardado(self):
         self.escrever_json({"saldo": "abc", "transacoes": []})
 
-        self.assertEqual(self.carregar().contas, ())
+        banco, _ = self.carregar()
+
+        self.assertEqual(banco.contas, ())
+        self.assertNotIn("dados.json", self.arquivos_na_pasta())
+
+    def test_json_inacessivel_nao_comeca_vazio(self):
+        self.escrever_json({"contas": []})
+
+        with patch("builtins.open", side_effect=PermissionError("negado")):
+            with self.assertRaises(ArmazenamentoIndisponivelError):
+                persistencia.carregar_banco()
+
+        self.assertEqual(self.arquivos_na_pasta(), ["dados.json"])
+
+    def test_falha_na_importacao_mantem_o_json(self):
+        self.escrever_json({"saldo": "10", "transacoes": []})
+
+        with patch.object(
+            persistencia, "gravar_banco",
+            side_effect=sqlite3.OperationalError("disco cheio")
+        ):
+            with self.assertRaises(ArmazenamentoIndisponivelError):
+                persistencia.carregar_banco()
+
+        # Sem banco.db pela metade: na próxima vez a importação é tentada de novo
+        self.assertEqual(self.arquivos_na_pasta(), ["dados.json"])
 
 if __name__ == "__main__":
     unittest.main()

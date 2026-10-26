@@ -147,10 +147,15 @@ def acessar_conta(banco):
         persistencia.salvar_banco(banco)
         return conta
 
-    if autenticar(banco, conta):
-        return conta
+    if not autenticar(banco, conta):
+        return None
 
-    return None
+    if not conta.titular:
+        print("Esta conta ainda não tem o nome do titular cadastrado.")
+        conta.titular = obter_titular()
+        persistencia.salvar_banco(banco)
+
+    return conta
 
 
 def obter_valor(mensagem):
@@ -339,7 +344,13 @@ def menu_conta(banco, conta):
 
 
 def main():
-    banco = persistencia.carregar_banco()
+    try:
+        banco = persistencia.carregar_banco()
+
+    except persistencia.ArmazenamentoIndisponivelError as erro:
+        print(f"Erro: {erro}")
+        print("O caixa não pode ser iniciado sem acesso aos dados.")
+        return
 
     if not terminal_esconde_pin():
         print(

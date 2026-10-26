@@ -16,6 +16,9 @@ env/
 Thumbs.db
 
 # Dados locais do caixa eletrônico
+banco.db
+banco.db.*
 dados.json
+dados.json.*
 .dados-*.tmp
 extratos/
